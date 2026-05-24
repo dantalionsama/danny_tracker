@@ -1,10 +1,25 @@
-// Scene Tracker — Frontend (v4: multi-character tabs)
-// Lumiverse calls setup(ctx) automatically.
+// Scene Tracker — Frontend v1.4
+// Per-chat state, icon-driven UI, no edit mode.
 
 // ─── Field config ─────────────────────────────────────────────────────────────
 
-const SCENE_FIELDS = ["time", "weather"];          // shown above tabs, shared
-const CHAR_HERO_FIELDS = ["mood", "attire", "position", "location"]; // per-character
+const CHAR_FIELDS = ["mood", "attire", "position", "location"];
+
+// ─── Icons ────────────────────────────────────────────────────────────────────
+// SVG strings keyed by field name. Inline so no external deps needed.
+
+const ICONS = {
+  time: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>`,
+  weather: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 0 1 0 9Z"/></svg>`,
+  mood: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>`,
+  attire: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.57a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.57a2 2 0 0 0-1.34-2.23z"/></svg>`,
+  position: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3"/><path d="M6.8 20a6 6 0 0 1 10.4 0"/></svg>`,
+  location: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>`,
+};
+
+function icon(key) {
+  return ICONS[key] ? `<span class="st-icon">${ICONS[key]}</span>` : "";
+}
 
 // ─── Mood color map ───────────────────────────────────────────────────────────
 
@@ -38,126 +53,82 @@ function getMoodHsl(mood) {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function fieldLabel(key) { return key.charAt(0).toUpperCase() + key.slice(1); }
-function escAttr(str)    { return String(str).replace(/&/g, "&amp;").replace(/"/g, "&quot;"); }
-function escHtml(str)    { return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+function escHtml(str) {
+  return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function escAttr(str) {
+  return String(str).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+}
 
 // ─── HTML builders ────────────────────────────────────────────────────────────
 
-function buildSceneChips(scene) {
-  if (!scene || !Object.keys(scene).length) return "";
+function buildSceneRow(key, value) {
   return `
-    <div class="st-chip-row st-chip-row--top">
-      ${Object.entries(scene).map(([key, value]) => `
-        <div class="st-chip">
-          <span class="st-chip-label">${fieldLabel(key)}</span>
-          <span class="st-chip-value">${escHtml(value || "—")}</span>
-        </div>`).join("")}
+    <div class="st-scene-row">
+      ${icon(key)}
+      <span class="st-scene-value">${escHtml(value || "—")}</span>
     </div>`;
+}
+
+function buildCharCard(fields) {
+  if (!fields || !Object.keys(fields).length) {
+    return `<p class="st-empty">No data yet.</p>`;
+  }
+  const keys = CHAR_FIELDS.filter(k => k in fields);
+  const extra = Object.keys(fields).filter(k => !CHAR_FIELDS.includes(k));
+  return [...keys, ...extra].map(key => `
+    <div class="st-char-row">
+      ${icon(key)}
+      <div class="st-char-text">
+        <span class="st-char-label">${key}</span>
+        <span class="st-char-value">${escHtml(fields[key] || "—")}</span>
+      </div>
+    </div>`).join("");
 }
 
 function buildTabBar(characters, activeTab) {
-  const names = Object.keys(characters);
-  if (!names.length) return "";
-  return `
-    <div class="st-tab-bar">
-      ${names.map(name => `
-        <button class="st-tab ${name === activeTab ? "st-tab--active" : ""}" data-tab="${escAttr(name)}">
-          ${escHtml(name)}
-          <span class="st-tab-close" data-remove="${escAttr(name)}" title="Remove ${escHtml(name)}">×</span>
-        </button>`).join("")}
-    </div>`;
+  return Object.keys(characters).map(name => `
+    <button class="st-tab ${name === activeTab ? "st-tab--active" : ""}" data-tab="${escAttr(name)}">
+      <span class="st-tab-name">${escHtml(name)}</span>
+      <span class="st-tab-close" data-remove="${escAttr(name)}">×</span>
+    </button>`).join("");
 }
 
-function buildCharView(fields) {
-  if (!fields || !Object.keys(fields).length) {
-    return `<p class="st-empty">No data yet for this character.</p>`;
-  }
-  const allKeys   = Object.keys(fields);
-  const heroKeys  = CHAR_HERO_FIELDS.filter(k => allKeys.includes(k));
-  const extraKeys = allKeys.filter(k => !CHAR_HERO_FIELDS.includes(k));
-  return [...heroKeys, ...extraKeys].map(key => `
-    <div class="st-hero-row">
-      <span class="st-hero-label">${fieldLabel(key)}</span>
-      <span class="st-hero-value">${escHtml(fields[key] || "—")}</span>
-    </div>`).join("");
-}
-
-function buildCharEdit(fields) {
-  const allKeys  = Object.keys(fields);
-  const coreKeys = CHAR_HERO_FIELDS.filter(k => allKeys.includes(k));
-  const extraKeys = allKeys.filter(k => !CHAR_HERO_FIELDS.includes(k));
-
-  return [...coreKeys, ...extraKeys].map(key => `
-    <div class="st-edit-row">
-      <label class="st-edit-label">${fieldLabel(key)}</label>
-      <input class="st-input" data-key="${escAttr(key)}" value="${escAttr(fields[key] || "")}" spellcheck="false" />
-    </div>`).join("");
-}
-
-function buildSceneEdit(scene) {
-  return Object.entries(scene).map(([key, value]) => `
-    <div class="st-edit-row">
-      <label class="st-edit-label">${fieldLabel(key)}</label>
-      <input class="st-input" data-scene-key="${escAttr(key)}" value="${escAttr(value || "")}" spellcheck="false" />
-    </div>`).join("");
-}
-
-function buildWidget(state, activeTab, isEditing, isCollapsed) {
+function buildWidget(state, activeTab, isCollapsed) {
   if (isCollapsed) {
     return `
-      <button class="st-pill" id="st-expand" aria-label="Expand scene tracker">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <button class="st-pill" id="st-expand" aria-label="Expand">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3"/>
           <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
         </svg>
-        <span class="st-pill-label">tracking...</span>
+        <span>tracking...</span>
       </button>`;
   }
 
-  const scene      = state.scene || {};
+  const scene = state.scene || {};
   const characters = state.characters || {};
-  const charNames  = Object.keys(characters);
-  const hasChars   = charNames.length > 0;
+  const charNames = Object.keys(characters);
+  const hasChars = charNames.length > 0;
   const charFields = activeTab ? (characters[activeTab] || {}) : {};
-
-  const headerButtons = isEditing
-    ? `<button class="st-btn st-primary" id="st-save">Save</button>
-       <button class="st-btn st-ghost" id="st-cancel">Cancel</button>`
-    : `<button class="st-btn st-ghost" id="st-edit">Edit</button>`;
-
-  // Body content
-  let bodyContent = "";
-  if (isEditing) {
-    // Scene fields first, then active character fields
-    bodyContent = `
-      <div class="st-edit-section-label">Scene</div>
-      ${buildSceneEdit(scene)}
-      ${activeTab ? `
-        <div class="st-edit-section-label st-edit-section-label--char">${escHtml(activeTab)}</div>
-        ${buildCharEdit(charFields)}
-      ` : ""}`;
-  } else {
-    bodyContent = `
-      ${buildSceneChips(scene)}
-      ${hasChars
-        ? buildTabBar(characters, activeTab) + `
-          <div class="st-char-body">
-            ${buildCharView(charFields)}
-          </div>`
-        : `<p class="st-empty">Waiting for first AI message…</p>`}`;
-  }
 
   return `
     <div class="st-card">
       <div class="st-header" id="st-header">
         <span class="st-title">danny is tracking...</span>
-        <div class="st-header-actions">
-          ${hasChars || isEditing ? headerButtons : ""}
-          <button class="st-btn st-ghost st-collapse-btn" id="st-collapse" aria-label="Collapse">&#x2212;</button>
-        </div>
+        <button class="st-collapse-btn" id="st-collapse" aria-label="Collapse">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
       </div>
-      <div class="st-body">${bodyContent}</div>
+
+      <div class="st-scene-section">
+        ${Object.entries(scene).map(([k, v]) => buildSceneRow(k, v)).join("")}
+      </div>
+
+      ${hasChars ? `
+        <div class="st-tab-bar">${buildTabBar(characters, activeTab)}</div>
+        <div class="st-char-section">${buildCharCard(charFields)}</div>
+      ` : `<p class="st-empty st-empty--pad">Waiting for first AI message…</p>`}
     </div>`;
 }
 
@@ -169,11 +140,13 @@ function applyMoodTheme(widgetRoot, mood) {
   const card   = widgetRoot.querySelector(".st-card");
   if (header) {
     header.style.background   = `hsla(${h},${s}%,${l}%,0.18)`;
-    header.style.borderBottom = `1px solid hsla(${h},${s}%,${l}%,0.22)`;
+    header.style.borderBottom = `1px solid hsla(${h},${s}%,${l}%,0.2)`;
   }
   if (card) {
-    card.style.borderColor = `hsla(${h},${s}%,${l}%,0.28)`;
-    card.style.boxShadow   = `0 2px 0 0 rgba(255,255,255,0.05) inset, 0 8px 32px rgba(0,0,0,0.55), 0 0 0 1px hsla(${h},${s}%,${l}%,0.12)`;
+    card.style.borderColor = `hsla(${h},${s}%,${l}%,0.3)`;
+    card.style.setProperty("--st-mood-h", h);
+    card.style.setProperty("--st-mood-s", s + "%");
+    card.style.setProperty("--st-mood-l", l + "%");
   }
 }
 
@@ -185,191 +158,171 @@ const STYLES = `
   .st-card {
     width: 300px;
     font-family: var(--lumiverse-font, system-ui, sans-serif);
-    color: var(--lumiverse-text);
-    background: rgba(18,14,38,0.82);
-    border: 1px solid rgba(255,255,255,0.09);
+    background: rgba(14, 11, 30, 0.88);
+    border: 1px solid rgba(255,255,255,0.08);
     border-radius: 14px;
     overflow: hidden;
-    backdrop-filter: blur(20px) saturate(140%);
-    -webkit-backdrop-filter: blur(20px) saturate(140%);
-    box-shadow: 0 2px 0 0 rgba(255,255,255,0.05) inset, 0 8px 32px rgba(0,0,0,0.55);
-    transition: border-color 1.2s ease, box-shadow 1.2s ease;
+    backdrop-filter: blur(24px) saturate(150%);
+    -webkit-backdrop-filter: blur(24px) saturate(150%);
+    box-shadow: 0 2px 0 rgba(255,255,255,0.04) inset, 0 12px 40px rgba(0,0,0,0.6);
+    transition: border-color 1s ease, box-shadow 1s ease;
+    --st-mood-h: 258; --st-mood-s: 70%; --st-mood-l: 55%;
   }
 
   /* ── Header ── */
   .st-header {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 9px 12px 8px;
-    border-bottom: 1px solid rgba(255,255,255,0.07);
-    background: rgba(255,255,255,0.03);
-    transition: background 1.2s ease, border-color 1.2s ease;
+    padding: 9px 10px 9px 13px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.025);
+    transition: background 1s ease, border-color 1s ease;
   }
   .st-title {
-    font-size: 10px; font-weight: 700; letter-spacing: 0.12em;
-    text-transform: uppercase; color: rgba(255,255,255,0.35);
+    font-size: 9.5px; font-weight: 700; letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.3);
   }
-  .st-header-actions { display: flex; gap: 5px; align-items: center; }
+  .st-collapse-btn {
+    width: 24px; height: 24px; border-radius: 6px;
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.35); cursor: pointer; padding: 4px;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.12s, color 0.12s;
+  }
+  .st-collapse-btn:hover { background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.8); }
+  .st-collapse-btn svg { width: 12px; height: 12px; }
 
-  /* ── Buttons ── */
-  .st-btn {
-    font-family: inherit; font-size: 10.5px; font-weight: 600;
-    padding: 3px 9px; border-radius: 20px; cursor: pointer;
-    border: 1px solid transparent; line-height: 1.5;
-    transition: opacity 0.12s, background 0.12s;
+  /* ── Scene rows (time + weather) ── */
+  .st-scene-section {
+    display: flex; flex-direction: column; gap: 0;
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.055);
   }
-  .st-ghost {
-    background: rgba(255,255,255,0.07); border-color: rgba(255,255,255,0.12);
-    color: rgba(255,255,255,0.55);
+  .st-scene-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 4px 0;
   }
-  .st-ghost:hover { background: rgba(255,255,255,0.13); color: rgba(255,255,255,0.85); }
-  .st-primary { background: var(--lumiverse-accent, #7c4dff); color: #fff; }
-  .st-primary:hover { opacity: 0.82; }
-  .st-collapse-btn { padding: 3px 7px; font-size: 13px; line-height: 1.2; }
+  .st-scene-value {
+    font-size: 12.5px; font-weight: 500;
+    color: rgba(255,255,255,0.78);
+    line-height: 1.3; word-break: break-word;
+  }
 
-  /* ── Body ── */
-  .st-body { padding: 10px 12px 10px; display: flex; flex-direction: column; gap: 0; }
-
-  /* ── Scene chips (time + weather) ── */
-  .st-chip-row { display: flex; flex-wrap: wrap; gap: 5px; }
-  .st-chip-row--top { padding-bottom: 10px; margin-bottom: 0; border-bottom: 1px solid rgba(255,255,255,0.055); }
-  .st-chip {
-    display: flex; flex-direction: column; gap: 1px;
-    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.09);
-    border-radius: 8px; padding: 4px 8px 5px; flex: 1; min-width: 60px;
+  /* ── Icons ── */
+  .st-icon {
+    flex-shrink: 0;
+    width: 14px; height: 14px;
+    color: hsla(var(--st-mood-h), var(--st-mood-s), var(--st-mood-l), 0.75);
+    display: flex; align-items: center; justify-content: center;
+    transition: color 1s ease;
   }
-  .st-chip-label {
-    font-size: 8.5px; font-weight: 700; letter-spacing: 0.09em;
-    text-transform: uppercase; color: rgba(255,255,255,0.28);
-  }
-  .st-chip-value {
-    font-size: 11.5px; font-weight: 500; color: rgba(255,255,255,0.82);
-    white-space: normal; word-break: break-word; line-height: 1.3;
-  }
+  .st-icon svg { width: 14px; height: 14px; }
 
   /* ── Tab bar ── */
   .st-tab-bar {
     display: flex; flex-wrap: wrap; gap: 4px;
-    padding: 9px 0 8px;
+    padding: 8px 12px 7px;
     border-bottom: 1px solid rgba(255,255,255,0.055);
   }
   .st-tab {
-    display: flex; align-items: center; gap: 4px;
-    padding: 3px 8px 3px 10px;
-    border-radius: 20px; border: 1px solid rgba(255,255,255,0.1);
-    background: rgba(255,255,255,0.05);
-    color: rgba(255,255,255,0.45);
+    display: flex; align-items: center; gap: 3px;
+    padding: 3px 8px 3px 9px;
+    border-radius: 20px; border: 1px solid rgba(255,255,255,0.09);
+    background: rgba(255,255,255,0.04);
     font-family: inherit; font-size: 11px; font-weight: 600;
-    cursor: pointer; transition: background 0.12s, color 0.12s, border-color 0.12s;
+    color: rgba(255,255,255,0.38); cursor: pointer;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
     white-space: nowrap;
   }
-  .st-tab:hover { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.75); }
+  .st-tab:hover { background: rgba(255,255,255,0.09); color: rgba(255,255,255,0.7); }
   .st-tab--active {
-    background: rgba(255,255,255,0.12);
-    border-color: rgba(255,255,255,0.22);
-    color: rgba(255,255,255,0.92);
+    background: hsla(var(--st-mood-h), var(--st-mood-s), var(--st-mood-l), 0.18);
+    border-color: hsla(var(--st-mood-h), var(--st-mood-s), var(--st-mood-l), 0.35);
+    color: rgba(255,255,255,0.9);
   }
+  .st-tab-name { pointer-events: none; }
   .st-tab-close {
-    font-size: 13px; line-height: 1; color: rgba(255,255,255,0.2);
-    transition: color 0.12s; padding: 0 1px; margin-left: 1px;
+    font-size: 13px; line-height: 1;
+    color: rgba(255,255,255,0.18); padding: 0 1px;
+    transition: color 0.12s;
   }
-  .st-tab-close:hover { color: rgba(255,100,100,0.85); }
+  .st-tab-close:hover { color: rgba(255,100,100,0.8); }
 
-  /* ── Character fields ── */
-  .st-char-body { padding-top: 8px; display: flex; flex-direction: column; }
-  .st-hero-row {
-    display: flex; flex-direction: column; gap: 1px;
-    padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);
+  /* ── Character section ── */
+  .st-char-section {
+    padding: 8px 12px 10px;
+    display: flex; flex-direction: column; gap: 0;
   }
-  .st-hero-row:last-child { border-bottom: none; }
-  .st-hero-label {
-    font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em;
-    text-transform: uppercase; color: rgba(255,255,255,0.3);
+  .st-char-row {
+    display: flex; align-items: flex-start; gap: 9px;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.045);
   }
-  .st-hero-value {
-    font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.92);
-    line-height: 1.35; white-space: normal; word-break: break-word;
+  .st-char-row:last-child { border-bottom: none; }
+  .st-char-row .st-icon { margin-top: 3px; }
+  .st-char-text {
+    display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0;
   }
-
-  /* ── Edit mode ── */
-  .st-edit-section-label {
+  .st-char-label {
     font-size: 9px; font-weight: 700; letter-spacing: 0.1em;
-    text-transform: uppercase; color: rgba(255,255,255,0.22);
-    padding: 4px 0 5px; margin-bottom: 2px;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.25);
   }
-  .st-edit-section-label--char { margin-top: 10px; }
-  .st-edit-row {
-    display: flex; align-items: center; gap: 6px;
-    padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.04);
+  .st-char-value {
+    font-size: 13px; font-weight: 500;
+    color: rgba(255,255,255,0.9);
+    line-height: 1.35; word-break: break-word;
   }
-  .st-edit-row:last-of-type { border-bottom: none; }
-  .st-edit-label {
-    min-width: 60px; font-size: 9.5px; font-weight: 700; letter-spacing: 0.09em;
-    text-transform: uppercase; color: rgba(255,255,255,0.28); flex-shrink: 0;
-  }
-  .st-input {
-    flex: 1; padding: 4px 8px;
-    background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 7px; color: rgba(255,255,255,0.9);
-    font-size: 11.5px; font-family: inherit; outline: none; min-width: 0;
-  }
-  .st-input:focus { border-color: var(--lumiverse-accent, #7c4dff); }
-  .st-del-btn {
-    flex-shrink: 0; background: none; border: none;
-    color: rgba(255,255,255,0.18); font-size: 15px; cursor: pointer;
-    padding: 0 2px; line-height: 1; transition: color 0.12s;
-  }
-  .st-del-btn:hover { color: rgba(255,100,100,0.8); }
 
-
+  /* ── Empty state ── */
   .st-empty {
-    font-size: 11.5px; color: rgba(255,255,255,0.3);
-    font-style: italic; padding: 8px 0; margin: 0;
+    font-size: 11.5px; color: rgba(255,255,255,0.28);
+    font-style: italic; margin: 0;
   }
+  .st-empty--pad { padding: 10px 13px; }
 
   /* ── Collapsed pill ── */
   .st-pill {
-    display: flex; align-items: center; gap: 6px;
-    padding: 8px 12px 8px 10px;
-    background: rgba(18,14,38,0.82); border: 1px solid rgba(255,255,255,0.09);
-    border-radius: 999px; color: rgba(255,255,255,0.6);
-    cursor: pointer; font-family: inherit; font-size: 11px;
-    font-weight: 600; letter-spacing: 0.06em;
-    box-shadow: 0 4px 18px rgba(0,0,0,0.5);
+    display: flex; align-items: center; gap: 7px;
+    padding: 8px 14px 8px 11px;
+    background: rgba(14,11,30,0.88);
+    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 999px; color: rgba(255,255,255,0.55);
+    cursor: pointer; font-family: inherit;
+    font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.55);
     transition: background 0.15s, color 0.15s;
     white-space: nowrap;
   }
-  .st-pill:hover { background: rgba(30,22,55,0.92); color: rgba(255,255,255,0.9); }
-  .st-pill-label { text-transform: uppercase; }
+  .st-pill svg { width: 13px; height: 13px; flex-shrink: 0; }
+  .st-pill:hover { background: rgba(28,20,52,0.95); color: rgba(255,255,255,0.9); }
 
-  /* ── Flash animations ── */
+  /* ── Flash ── */
   @keyframes st-pulse {
-    0%   { box-shadow: 0 0 0 0 rgba(124,77,255,0.55), 0 8px 32px rgba(0,0,0,0.55); }
-    60%  { box-shadow: 0 0 0 6px rgba(124,77,255,0),  0 8px 32px rgba(0,0,0,0.55); }
-    100% { box-shadow: 0 8px 32px rgba(0,0,0,0.55); }
+    0%   { box-shadow: 0 0 0 0 hsla(var(--st-mood-h),var(--st-mood-s),var(--st-mood-l),0.55), 0 12px 40px rgba(0,0,0,0.6); }
+    60%  { box-shadow: 0 0 0 6px hsla(var(--st-mood-h),var(--st-mood-s),var(--st-mood-l),0), 0 12px 40px rgba(0,0,0,0.6); }
+    100% { box-shadow: 0 12px 40px rgba(0,0,0,0.6); }
   }
-  .st-card.st-flash { animation: st-pulse 0.65s ease-out forwards; }
+  .st-card.st-flash { animation: st-pulse 0.7s ease-out forwards; }
 
   @keyframes st-pill-pulse {
-    0%   { box-shadow: 0 0 0 0 rgba(124,77,255,0.7), 0 4px 18px rgba(0,0,0,0.5); }
-    60%  { box-shadow: 0 0 0 6px rgba(124,77,255,0),  0 4px 18px rgba(0,0,0,0.5); }
-    100% { box-shadow: 0 4px 18px rgba(0,0,0,0.5); }
+    0%   { box-shadow: 0 0 0 0 rgba(124,77,255,0.65), 0 4px 20px rgba(0,0,0,0.55); }
+    60%  { box-shadow: 0 0 0 6px rgba(124,77,255,0),  0 4px 20px rgba(0,0,0,0.55); }
+    100% { box-shadow: 0 4px 20px rgba(0,0,0,0.55); }
   }
-  .st-pill.st-flash { animation: st-pill-pulse 0.65s ease-out forwards; }
+  .st-pill.st-flash { animation: st-pill-pulse 0.7s ease-out forwards; }
 `;
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
 
 export function setup(ctx) {
-  let state          = { scene: {}, characters: {} };
-  let activeTab      = null;   // currently visible character tab
-  let isEditing      = false;
-  let isCollapsed    = false;
-
+  let state       = { scene: {}, characters: {} };
+  let activeTab   = null;
+  let isCollapsed = false;
 
   const removeStyle = ctx.dom.addStyle(STYLES);
 
-  // Restore saved position
   const POSITION_KEY = "scene_tracker_position";
   let savedPos = { x: window.innerWidth - 320, y: 100 };
   try {
@@ -394,40 +347,31 @@ export function setup(ctx) {
   // ── Repaint ──────────────────────────────────────────────────────────────────
 
   function repaint() {
-    // If activeTab was removed, fall back to first available character
     const charNames = Object.keys(state.characters || {});
-    if (activeTab && !charNames.includes(activeTab)) {
-      activeTab = charNames[0] ?? null;
-    }
+    if (activeTab && !charNames.includes(activeTab)) activeTab = charNames[0] ?? null;
     if (!activeTab && charNames.length) activeTab = charNames[0];
 
-    widgetRoot.innerHTML = buildWidget(state, activeTab, isEditing, isCollapsed);
+    widgetRoot.innerHTML = buildWidget(state, activeTab, isCollapsed);
 
-    // Apply mood theme from active tab
-    if (!isCollapsed && activeTab) {
-      const mood = (state.characters[activeTab] || {}).mood || "";
+    if (!isCollapsed) {
+      const mood = activeTab ? (state.characters[activeTab] || {}).mood || "" : "";
       applyMoodTheme(widgetRoot, mood);
     }
 
-    // ── Collapse / expand ──
     widgetRoot.querySelector("#st-expand")?.addEventListener("click", () => {
       isCollapsed = false; repaint();
     });
     widgetRoot.querySelector("#st-collapse")?.addEventListener("click", () => {
-      isCollapsed = true; isEditing = false; repaint();
+      isCollapsed = true; repaint();
     });
 
-    // ── Tab clicks ──
     widgetRoot.querySelectorAll(".st-tab").forEach(tab => {
       tab.addEventListener("click", (e) => {
-        // Don't switch if the × was clicked
         if (e.target.closest(".st-tab-close")) return;
-        activeTab = tab.dataset.tab;
-        repaint();
+        activeTab = tab.dataset.tab; repaint();
       });
     });
 
-    // ── Tab remove (×) ──
     widgetRoot.querySelectorAll(".st-tab-close").forEach(btn => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -438,51 +382,15 @@ export function setup(ctx) {
         repaint();
       });
     });
-
-    // ── Edit / cancel ──
-    widgetRoot.querySelector("#st-edit")?.addEventListener("click", () => {
-      isEditing = true; repaint();
-    });
-    widgetRoot.querySelector("#st-cancel")?.addEventListener("click", () => {
-      isEditing = false; repaint();
-    });
-
-    // ── Save ──
-    widgetRoot.querySelector("#st-save")?.addEventListener("click", () => {
-      // Scene fields
-      const scenePatches = {};
-      widgetRoot.querySelectorAll("[data-scene-key]").forEach(input => {
-        const val = input.value.trim();
-        if (val) scenePatches[input.dataset.sceneKey] = val;
-      });
-      state.scene = { ...state.scene, ...scenePatches };
-
-      // Character fields — active tab only
-      if (activeTab) {
-        const charPatches = {};
-        widgetRoot.querySelectorAll(".st-input[data-key]").forEach(input => {
-          const val = input.value.trim();
-          if (val) charPatches[input.dataset.key] = val;
-        });
-        state.characters[activeTab] = { ...(state.characters[activeTab] || {}), ...charPatches };
-        ctx.sendToBackend({ type: "manual_override", scene: scenePatches, character: activeTab, fields: state.characters[activeTab] });
-      } else {
-        ctx.sendToBackend({ type: "manual_override", scene: scenePatches });
-      }
-
-      isEditing = false;
-      repaint();
-    });
   }
 
-  // ── Flash helpers ────────────────────────────────────────────────────────────
+  // ── Flash ────────────────────────────────────────────────────────────────────
 
   function flashCard() {
     const el = widgetRoot.querySelector(".st-card");
     if (!el) return;
     el.classList.remove("st-flash"); void el.offsetWidth; el.classList.add("st-flash");
   }
-
   function flashPill() {
     const el = widgetRoot.querySelector(".st-pill");
     if (!el) return;
@@ -490,8 +398,6 @@ export function setup(ctx) {
   }
 
   // ── Tag interceptor ──────────────────────────────────────────────────────────
-  // Reads a single JSON blob from tag inner content:
-  // <scene-state>{"scene":{...},"characters":[{"name":"Gilgamesh",...}]}</scene-state>
 
   const unsubTag = ctx.messages.registerTagInterceptor(
     { tagName: "scene-state", removeFromMessage: true },
@@ -499,29 +405,20 @@ export function setup(ctx) {
       if (payload.isUser) return;
       try {
         const data = JSON.parse(payload.content || payload.innerText || "{}");
-
-        // Merge scene fields
         if (data.scene) state.scene = { ...state.scene, ...data.scene };
-
-        // Merge characters — auto-create new tabs
         if (Array.isArray(data.characters)) {
           for (const char of data.characters) {
             const { name, ...fields } = char;
             if (!name) continue;
             state.characters[name] = { ...(state.characters[name] || {}), ...fields };
-            // Auto-switch to newly introduced character
             if (!activeTab) activeTab = name;
           }
         }
-
-        if (!isEditing) {
-          repaint();
-          isCollapsed ? flashPill() : flashCard();
-        }
-
+        repaint();
+        isCollapsed ? flashPill() : flashCard();
         ctx.sendToBackend({ type: "tag_parsed", scene: data.scene || {}, characters: data.characters || [] });
       } catch (e) {
-        ctx.log?.warn("[SceneTracker] Failed to parse tag JSON: " + e.message);
+        ctx.log?.warn("[SceneTracker] Tag parse error: " + e.message);
       }
     }
   );
@@ -531,8 +428,22 @@ export function setup(ctx) {
   const unsubBackend = ctx.onBackendMessage((payload) => {
     if (payload.type === "state_updated") {
       state = payload.state ?? { scene: {}, characters: {} };
-      if (!isEditing) repaint();
+      repaint();
+    } else if (payload.type === "state_reset") {
+      // Chat closed or switched to home — clear everything
+      state = { scene: {}, characters: {} };
+      activeTab = null;
+      repaint();
     }
+  });
+
+  // ── Listen for chat switches on the frontend too ─────────────────────────────
+  // Backend will send state_updated for the new chat, but we clear immediately
+  // so old tabs don't flash up before the new state arrives.
+  const unsubChatSwitch = ctx.events.on("CHAT_SWITCHED", ({ chatId }) => {
+    state = { scene: {}, characters: {} };
+    activeTab = null;
+    repaint();
   });
 
   ctx.sendToBackend({ type: "request_state" });
@@ -541,6 +452,7 @@ export function setup(ctx) {
   return () => {
     unsubTag();
     unsubBackend();
+    unsubChatSwitch();
     removeStyle();
     floatWidget.destroy();
   };

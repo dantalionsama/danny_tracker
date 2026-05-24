@@ -1,14 +1,15 @@
 {
-  "version": "1.3.0",
-  "name": "Danny's Tracker",
-  "identifier": "danny_tracker",
-  "author": "you",
+  "version": "1.4.0",
+  "name": "danny tracker",
+  "identifier": "scene_tracker",
+  "author": "dantalionsama",
   "github": "https://github.com/dantalionsama/danny_tracker",
   "homepage": "https://github.com/dantalionsama/danny_tracker",
-  "description": "Floating widget that tracks scene state (mood, attire, position, etc.) from hidden AI tags. Supports manual overrides and macro injection.",
+  "description": "Floating widget tracking scene state and multiple characters. Auto-updates from hidden AI tags, per-chat state, mood color theming.",
   "permissions": [
     "ephemeral_storage",
-    "ui_panels"
+    "ui_panels",
+    "chats"
   ],
   "entry_backend": "dist/backend.js",
   "entry_frontend": "dist/frontend.js",

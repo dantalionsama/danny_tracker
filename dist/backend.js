@@ -1,86 +1,89 @@
-// Scene Tracker — Backend (v2: multi-character)
-// Lumiverse injects `spindle` as a global.
+// Scene Tracker — Backend v1.4
+// Per-chat state storage keyed by chatId. Resets on CHAT_SWITCHED.
 
-const STORAGE_KEY = "scene_state.json";
-const TTL_MS = 12 * 60 * 60 * 1000;
+const DEFAULT_SCENE = { time: "unknown", weather: "unknown" };
+const TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-const DEFAULT_STATE = {
-  scene: { time: "unknown", weather: "clear" },
-  characters: {},
-};
+function storageKey(chatId) {
+  return `scene_state_${chatId}.json`;
+}
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+function buildMacroValue(state) {
+  const scene = state.scene || {};
+  const characters = state.characters || {};
+  const sceneStr = Object.entries(scene).map(([k, v]) => `${k}: ${v}`).join(", ");
+  const charStr = Object.entries(characters)
+    .map(([name, fields]) => {
+      const f = Object.entries(fields).map(([k, v]) => `${k}: ${v}`).join(" | ");
+      return `${name} — ${f}`;
+    })
+    .join("\n");
+  return [sceneStr, charStr].filter(Boolean).join("\n");
+}
 
-async function loadState() {
+async function loadState(chatId) {
   try {
-    const raw = await spindle.ephemeral.read(STORAGE_KEY);
-    const parsed = JSON.parse(raw);
-    // Migrate old flat-state saves gracefully
-    if (!parsed.scene && !parsed.characters) {
-      return { ...DEFAULT_STATE };
-    }
-    return parsed;
+    const raw = await spindle.ephemeral.read(storageKey(chatId));
+    return JSON.parse(raw);
   } catch {
-    return { scene: { ...DEFAULT_STATE.scene }, characters: {} };
+    return { scene: { ...DEFAULT_SCENE }, characters: {} };
   }
 }
 
-async function saveState(state) {
-  await spindle.ephemeral.write(STORAGE_KEY, JSON.stringify(state), { ttlMs: TTL_MS });
+async function saveState(chatId, state) {
+  await spindle.ephemeral.write(storageKey(chatId), JSON.stringify(state), { ttlMs: TTL_MS });
 }
 
-/**
- * Builds the {{scene_state}} macro string.
- * Scene: late evening, heavy rain
- * Gilgamesh — mood: proud | attire: golden armor | position: reclined on throne
- * Emiya — mood: tired | attire: red coat | position: standing in the doorway
- */
-function buildMacroValue(state) {
-  const sceneStr = Object.entries(state.scene || {})
-    .map(([k, v]) => v).join(", ");
-
-  const charLines = Object.entries(state.characters || {})
-    .map(([name, fields]) => {
-      const fieldStr = Object.entries(fields)
-        .map(([k, v]) => `${k}: ${v}`)
-        .join(" | ");
-      return `${name} — ${fieldStr}`;
-    });
-
-  return [`Scene: ${sceneStr}`, ...charLines].join("\n");
-}
-
-// ─── Boot ─────────────────────────────────────────────────────────────────────
+// Track current active chat
+let activeChatId = null;
 
 (async () => {
   spindle.registerMacro({
     name: "scene_state",
     category: "extension:scene_tracker",
-    description: "Current scene state and all tracked characters.",
+    description: "Current scene state for the system prompt.",
     returnType: "string",
     handler: "",
   });
 
-  const initial = await loadState();
-  spindle.updateMacroValue("scene_state", buildMacroValue(initial));
-  spindle.sendToFrontend({ type: "state_updated", state: initial });
-  spindle.log.info("[SceneTracker] Ready — " + JSON.stringify(initial));
+  // Discover active chat on boot
+  try {
+    const active = await spindle.chats.getActive();
+    if (active) {
+      activeChatId = active.id;
+      const state = await loadState(activeChatId);
+      spindle.updateMacroValue("scene_state", buildMacroValue(state));
+      spindle.sendToFrontend({ type: "state_updated", state, chatId: activeChatId });
+    }
+  } catch (e) {
+    spindle.log.warn("[SceneTracker] Could not get active chat on boot: " + e.message);
+  }
+
+  // Listen for chat switches — key state per chat
+  spindle.on("CHAT_SWITCHED", async ({ chatId }) => {
+    activeChatId = chatId;
+    if (!chatId) {
+      // Back to home screen — clear widget
+      spindle.sendToFrontend({ type: "state_reset" });
+      return;
+    }
+    const state = await loadState(chatId);
+    spindle.updateMacroValue("scene_state", buildMacroValue(state));
+    spindle.sendToFrontend({ type: "state_updated", state, chatId });
+    spindle.log.info("[SceneTracker] Chat switched → " + chatId);
+  });
+
+  spindle.log.info("[SceneTracker] Ready.");
 })();
 
-// ─── Message router ───────────────────────────────────────────────────────────
-
 spindle.onFrontendMessage(async (payload) => {
+  const chatId = activeChatId;
+  if (!chatId) return;
+
   switch (payload.type) {
-
     case "tag_parsed": {
-      const current = await loadState();
-
-      // Merge scene-level fields
-      if (payload.scene) {
-        current.scene = { ...current.scene, ...payload.scene };
-      }
-
-      // Merge each character — create tab if new, merge fields if existing
+      const current = await loadState(chatId);
+      if (payload.scene) current.scene = { ...current.scene, ...payload.scene };
       if (Array.isArray(payload.characters)) {
         for (const char of payload.characters) {
           const { name, ...fields } = char;
@@ -88,46 +91,21 @@ spindle.onFrontendMessage(async (payload) => {
           current.characters[name] = { ...(current.characters[name] || {}), ...fields };
         }
       }
-
-      await saveState(current);
+      await saveState(chatId, current);
       spindle.updateMacroValue("scene_state", buildMacroValue(current));
-      spindle.sendToFrontend({ type: "state_updated", state: current });
-      spindle.log.info("[SceneTracker] Tag parsed → " + JSON.stringify(current));
+      spindle.sendToFrontend({ type: "state_updated", state: current, chatId });
       break;
     }
-
-    case "manual_override": {
-      const current = await loadState();
-
-      if (payload.scene) {
-        current.scene = { ...current.scene, ...payload.scene };
-      }
-      if (payload.character && payload.fields) {
-        current.characters[payload.character] = {
-          ...(current.characters[payload.character] || {}),
-          ...payload.fields,
-        };
-      }
-
-      await saveState(current);
-      spindle.updateMacroValue("scene_state", buildMacroValue(current));
-      spindle.log.info("[SceneTracker] Manual override → " + JSON.stringify(current));
-      break;
-    }
-
     case "remove_character": {
-      const current = await loadState();
+      const current = await loadState(chatId);
       delete current.characters[payload.name];
-      await saveState(current);
+      await saveState(chatId, current);
       spindle.updateMacroValue("scene_state", buildMacroValue(current));
-      spindle.sendToFrontend({ type: "state_updated", state: current });
-      spindle.log.info("[SceneTracker] Removed character: " + payload.name);
       break;
     }
-
     case "request_state": {
-      const state = await loadState();
-      spindle.sendToFrontend({ type: "state_updated", state });
+      const state = await loadState(chatId);
+      spindle.sendToFrontend({ type: "state_updated", state, chatId });
       break;
     }
   }
