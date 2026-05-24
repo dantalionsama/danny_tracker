@@ -83,28 +83,16 @@ function buildCharView(fields) {
     </div>`).join("");
 }
 
-function buildCharEdit(fields, pendingFields) {
-  const allKeys   = Object.keys(fields);
-  const coreKeys  = CHAR_HERO_FIELDS.filter(k => allKeys.includes(k));
+function buildCharEdit(fields) {
+  const allKeys  = Object.keys(fields);
+  const coreKeys = CHAR_HERO_FIELDS.filter(k => allKeys.includes(k));
   const extraKeys = allKeys.filter(k => !CHAR_HERO_FIELDS.includes(k));
 
-  const existing = [...coreKeys, ...extraKeys].map(key => `
+  return [...coreKeys, ...extraKeys].map(key => `
     <div class="st-edit-row">
       <label class="st-edit-label">${fieldLabel(key)}</label>
       <input class="st-input" data-key="${escAttr(key)}" value="${escAttr(fields[key] || "")}" spellcheck="false" />
-      ${CHAR_HERO_FIELDS.includes(key) ? "" :
-        `<button class="st-del-btn" data-del-key="${escAttr(key)}" title="Remove">×</button>`}
     </div>`).join("");
-
-  const pending = pendingFields.map((_, i) => `
-    <div class="st-edit-row">
-      <input class="st-input st-key-input" data-new-key-index="${i}" placeholder="field name" spellcheck="false" />
-      <input class="st-input" data-new-val-index="${i}" placeholder="value" spellcheck="false" />
-      <button class="st-del-btn" data-del-pending="${i}" title="Remove">×</button>
-    </div>`).join("");
-
-  return existing + pending + `
-    <button class="st-add-field-btn" id="st-add-field">＋ Add field</button>`;
 }
 
 function buildSceneEdit(scene) {
@@ -115,7 +103,7 @@ function buildSceneEdit(scene) {
     </div>`).join("");
 }
 
-function buildWidget(state, activeTab, isEditing, isCollapsed, pendingFields) {
+function buildWidget(state, activeTab, isEditing, isCollapsed) {
   if (isCollapsed) {
     return `
       <button class="st-pill" id="st-expand" aria-label="Expand scene tracker">
@@ -147,7 +135,7 @@ function buildWidget(state, activeTab, isEditing, isCollapsed, pendingFields) {
       ${buildSceneEdit(scene)}
       ${activeTab ? `
         <div class="st-edit-section-label st-edit-section-label--char">${escHtml(activeTab)}</div>
-        ${buildCharEdit(charFields, pendingFields)}
+        ${buildCharEdit(charFields)}
       ` : ""}`;
   } else {
     bodyContent = `
@@ -325,7 +313,6 @@ const STYLES = `
     border-radius: 7px; color: rgba(255,255,255,0.9);
     font-size: 11.5px; font-family: inherit; outline: none; min-width: 0;
   }
-  .st-key-input { max-width: 88px; flex: 0 0 88px; }
   .st-input:focus { border-color: var(--lumiverse-accent, #7c4dff); }
   .st-del-btn {
     flex-shrink: 0; background: none; border: none;
@@ -333,14 +320,7 @@ const STYLES = `
     padding: 0 2px; line-height: 1; transition: color 0.12s;
   }
   .st-del-btn:hover { color: rgba(255,100,100,0.8); }
-  .st-add-field-btn {
-    display: flex; align-items: center; gap: 5px; margin-top: 8px; padding: 5px 10px;
-    background: rgba(255,255,255,0.04); border: 1px dashed rgba(255,255,255,0.15);
-    border-radius: 8px; color: rgba(255,255,255,0.35); font-family: inherit;
-    font-size: 10.5px; font-weight: 600; cursor: pointer; width: 100%;
-    justify-content: center; transition: background 0.12s, color 0.12s, border-color 0.12s;
-  }
-  .st-add-field-btn:hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.7); border-color: rgba(255,255,255,0.3); }
+
 
   .st-empty {
     font-size: 11.5px; color: rgba(255,255,255,0.3);
@@ -385,8 +365,7 @@ export function setup(ctx) {
   let activeTab      = null;   // currently visible character tab
   let isEditing      = false;
   let isCollapsed    = false;
-  let pendingFields  = [];
-  let pendingDeletes = [];
+
 
   const removeStyle = ctx.dom.addStyle(STYLES);
 
@@ -422,7 +401,7 @@ export function setup(ctx) {
     }
     if (!activeTab && charNames.length) activeTab = charNames[0];
 
-    widgetRoot.innerHTML = buildWidget(state, activeTab, isEditing, isCollapsed, pendingFields);
+    widgetRoot.innerHTML = buildWidget(state, activeTab, isEditing, isCollapsed);
 
     // Apply mood theme from active tab
     if (!isCollapsed && activeTab) {
@@ -435,7 +414,7 @@ export function setup(ctx) {
       isCollapsed = false; repaint();
     });
     widgetRoot.querySelector("#st-collapse")?.addEventListener("click", () => {
-      isCollapsed = true; isEditing = false; pendingFields = []; pendingDeletes = []; repaint();
+      isCollapsed = true; isEditing = false; repaint();
     });
 
     // ── Tab clicks ──
@@ -465,7 +444,7 @@ export function setup(ctx) {
       isEditing = true; repaint();
     });
     widgetRoot.querySelector("#st-cancel")?.addEventListener("click", () => {
-      isEditing = false; pendingFields = []; pendingDeletes = []; repaint();
+      isEditing = false; repaint();
     });
 
     // ── Save ──
@@ -473,57 +452,26 @@ export function setup(ctx) {
       // Scene fields
       const scenePatches = {};
       widgetRoot.querySelectorAll("[data-scene-key]").forEach(input => {
-        scenePatches[input.dataset.sceneKey] = input.value.trim() || state.scene[input.dataset.sceneKey];
+        const val = input.value.trim();
+        if (val) scenePatches[input.dataset.sceneKey] = val;
       });
       state.scene = { ...state.scene, ...scenePatches };
 
-      // Character fields (active tab only)
+      // Character fields — active tab only
       if (activeTab) {
         const charPatches = {};
         widgetRoot.querySelectorAll(".st-input[data-key]").forEach(input => {
-          charPatches[input.dataset.key] = input.value.trim() || (state.characters[activeTab] || {})[input.dataset.key];
+          const val = input.value.trim();
+          if (val) charPatches[input.dataset.key] = val;
         });
-        // New pending fields
-        widgetRoot.querySelectorAll(".st-key-input").forEach((keyInput, i) => {
-          const valInput = widgetRoot.querySelector(`[data-new-val-index="${i}"]`);
-          const k = keyInput.value.trim().toLowerCase().replace(/\s+/g, "_");
-          const v = valInput?.value.trim();
-          if (k && v) charPatches[k] = v;
-        });
-        // Apply deletions
-        const current = { ...(state.characters[activeTab] || {}), ...charPatches };
-        for (const k of pendingDeletes) delete current[k];
-        state.characters[activeTab] = current;
+        state.characters[activeTab] = { ...(state.characters[activeTab] || {}), ...charPatches };
         ctx.sendToBackend({ type: "manual_override", scene: scenePatches, character: activeTab, fields: state.characters[activeTab] });
       } else {
         ctx.sendToBackend({ type: "manual_override", scene: scenePatches });
       }
 
-      pendingFields = []; pendingDeletes = [];
       isEditing = false;
       repaint();
-    });
-
-    // ── Add field ──
-    widgetRoot.querySelector("#st-add-field")?.addEventListener("click", () => {
-      pendingFields.push({ key: "", val: "" }); repaint();
-    });
-
-    // ── Delete existing custom field ──
-    widgetRoot.querySelectorAll("[data-del-key]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const k = btn.dataset.delKey;
-        pendingDeletes.push(k);
-        delete state.characters[activeTab][k];
-        repaint();
-      });
-    });
-
-    // ── Delete pending new row ──
-    widgetRoot.querySelectorAll("[data-del-pending]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        pendingFields.splice(parseInt(btn.dataset.delPending, 10), 1); repaint();
-      });
     });
   }
 
