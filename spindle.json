@@ -3,8 +3,8 @@
   "name": "Danny's Tracker",
   "identifier": "danny_tracker",
   "author": "you",
-  "github": "https://github.com/dantalionsama/danny-tracker",
-  "homepage": "https://github.com/dantalionsama/danny-tracker",
+  "github": "https://github.com/dantalionsama/danny_tracker",
+  "homepage": "https://github.com/dantalionsama/danny_tracker",
   "description": "Floating widget that tracks scene state (mood, attire, position, etc.) from hidden AI tags. Supports manual overrides and macro injection.",
   "permissions": [
     "ephemeral_storage",
