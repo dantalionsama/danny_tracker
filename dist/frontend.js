@@ -118,7 +118,7 @@ function buildWidget(state, editing, collapsed, pendingFields) {
         <circle cx="12" cy="12" r="3"/>
         <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
       </svg>
-      <span class="st-pill-label">Scene</span>
+      <span class="st-pill-label">tracking...</span>
     </button>`;
   }
 
@@ -131,7 +131,7 @@ function buildWidget(state, editing, collapsed, pendingFields) {
   return `
     <div class="st-card">
       <div class="st-header" id="st-header">
-        <span class="st-title">Scene</span>
+        <span class="st-title">danny is tracking...</span>
         <div class="st-header-actions">
           ${headerButtons}
           <button class="st-btn st-ghost st-collapse-btn" id="st-collapse" aria-label="Collapse">&#x2212;</button>
@@ -333,13 +333,24 @@ export function setup(ctx) {
 
   const removeStyle = ctx.dom.addStyle(STYLES);
 
+  // Restore saved position, fall back to top-right corner
+  const POSITION_KEY = "scene_tracker_position";
+  let savedPos = { x: window.innerWidth - 320, y: 100 };
+  try {
+    const stored = localStorage.getItem(POSITION_KEY);
+    if (stored) savedPos = JSON.parse(stored);
+  } catch {}
+
   const floatWidget = ctx.ui.createFloatWidget({
     width: 300,
     height: 280,
-    initialPosition: { x: window.innerWidth - 320, y: 100 },
+    initialPosition: savedPos,
     snapToEdge: true,
     tooltip: "Scene Tracker",
     chromeless: true,
+    onMove: (pos) => {
+      try { localStorage.setItem(POSITION_KEY, JSON.stringify(pos)); } catch {}
+    },
   });
 
   const widgetRoot = floatWidget.root;
