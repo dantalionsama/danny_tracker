@@ -1,7 +1,7 @@
 {
   "version": "1.4.0",
-  "name": "danny tracker",
-  "identifier": "scene_tracker",
+  "name": "Danny's Tracker",
+  "identifier": "danny_tracker",
   "author": "dantalionsama",
   "github": "https://github.com/dantalionsama/danny_tracker",
   "homepage": "https://github.com/dantalionsama/danny_tracker",
@@ -15,7 +15,7 @@
   "entry_frontend": "dist/frontend.js",
   "storage_seed_files": [
     {
-      "from": "storage/scene_tracker",
+      "from": "storage/danny_tracker",
       "to": ".",
       "overwrite": false,
       "required": false
