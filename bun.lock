@@ -1,0 +1,18 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "scene-tracker",
+      "devDependencies": {
+        "lumiverse-spindle-types": "latest",
+        "typescript": "^5.0.0",
+      },
+    },
+  },
+  "packages": {
+    "lumiverse-spindle-types": ["lumiverse-spindle-types@0.5.11", "", {}, "sha512-vkpxnH2g/vNXByxzOQOOnJJJZPcRXPv5ZQThCTkiGm3KHgHs55sldYrGqKCx7fdSawyfj29MEuTU3q8la/s2JA=="],
+
+    "typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+  }
+}

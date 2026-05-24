@@ -1,0 +1,24 @@
+{
+  "version": "1.0.0",
+  "name": "Danny's Tracker",
+  "identifier": "danny_tracker",
+  "author": "you",
+  "github": "https://github.com/dantalionsama/danny-tracker",
+  "homepage": "https://github.com/dantalionsama/danny-tracker",
+  "description": "Floating widget that tracks scene state (mood, attire, position, etc.) from hidden AI tags. Supports manual overrides and macro injection.",
+  "permissions": [
+    "ephemeral_storage",
+    "ui_panels"
+  ],
+  "entry_backend": "dist/backend.js",
+  "entry_frontend": "dist/frontend.js",
+  "storage_seed_files": [
+    {
+      "from": "storage/scene_tracker",
+      "to": ".",
+      "overwrite": false,
+      "required": false
+    }
+  ],
+  "minimum_lumiverse_version": "0.9.0"
+}
