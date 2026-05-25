@@ -138,6 +138,7 @@ function applyMoodTheme(widgetRoot, mood) {
   const [h, s, l] = getMoodHsl(mood);
   const header = widgetRoot.querySelector("#st-header");
   const card   = widgetRoot.querySelector(".st-card");
+  const pill   = widgetRoot.querySelector(".st-pill");
   if (header) {
     header.style.background   = `hsla(${h},${s}%,${l}%,0.18)`;
     header.style.borderBottom = `1px solid hsla(${h},${s}%,${l}%,0.2)`;
@@ -147,6 +148,11 @@ function applyMoodTheme(widgetRoot, mood) {
     card.style.setProperty("--st-mood-h", h);
     card.style.setProperty("--st-mood-s", s + "%");
     card.style.setProperty("--st-mood-l", l + "%");
+  }
+  if (pill) {
+    pill.style.borderColor = `hsla(${h},${s}%,${l}%,0.35)`;
+    pill.style.color       = `hsla(${h},${s}%,${l + 20}%,0.85)`;
+    pill.style.boxShadow   = `0 4px 20px rgba(0,0,0,0.55), 0 0 0 1px hsla(${h},${s}%,${l}%,0.15)`;
   }
 }
 
@@ -252,6 +258,11 @@ const STYLES = `
   .st-char-section {
     padding: 8px 12px 10px;
     display: flex; flex-direction: column; gap: 0;
+    animation: st-fade-in 0.18s ease-out;
+  }
+  @keyframes st-fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
   }
   .st-char-row {
     display: flex; align-items: flex-start; gap: 9px;
@@ -319,7 +330,8 @@ const STYLES = `
 export function setup(ctx) {
   let state       = { scene: {}, characters: {} };
   let activeTab   = null;
-  let isCollapsed = false;
+  let isCollapsed    = false;
+  let latestMsgId    = null;   // only process tags from the most recent message
 
   const removeStyle = ctx.dom.addStyle(STYLES);
 
@@ -344,6 +356,11 @@ export function setup(ctx) {
 
   const widgetRoot = floatWidget.root;
 
+  // Track which message is the latest so scroll renders don't trigger updates
+  const unsubGenEnded = ctx.events.on("GENERATION_ENDED", (payload) => {
+    if (payload.messageId) latestMsgId = payload.messageId;
+  });
+
   // ── Repaint ──────────────────────────────────────────────────────────────────
 
   function repaint() {
@@ -353,10 +370,8 @@ export function setup(ctx) {
 
     widgetRoot.innerHTML = buildWidget(state, activeTab, isCollapsed);
 
-    if (!isCollapsed) {
-      const mood = activeTab ? (state.characters[activeTab] || {}).mood || "" : "";
-      applyMoodTheme(widgetRoot, mood);
-    }
+    const mood = activeTab ? (state.characters[activeTab] || {}).mood || "" : "";
+    applyMoodTheme(widgetRoot, mood);
 
     widgetRoot.querySelector("#st-expand")?.addEventListener("click", () => {
       isCollapsed = false; repaint();
@@ -403,6 +418,15 @@ export function setup(ctx) {
     { tagName: "scene-state", removeFromMessage: true },
     (payload) => {
       if (payload.isUser) return;
+      // Ignore historical renders (scroll-up). Only process if:
+      // • message is currently streaming, OR
+      // • it's the most recent message we know about, OR
+      // • we haven't seen any generation end yet (first message in chat)
+      if (
+        !payload.isStreaming &&
+        latestMsgId !== null &&
+        payload.messageId !== latestMsgId
+      ) return;
       try {
         const data = JSON.parse(payload.content || payload.innerText || "{}");
         if (data.scene) state.scene = { ...state.scene, ...data.scene };
@@ -443,6 +467,7 @@ export function setup(ctx) {
   const unsubChatSwitch = ctx.events.on("CHAT_SWITCHED", ({ chatId }) => {
     state = { scene: {}, characters: {} };
     activeTab = null;
+    latestMsgId = null;
     repaint();
   });
 
@@ -453,6 +478,7 @@ export function setup(ctx) {
     unsubTag();
     unsubBackend();
     unsubChatSwitch();
+    unsubGenEnded();
     removeStyle();
     floatWidget.destroy();
   };
