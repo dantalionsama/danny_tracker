@@ -61,17 +61,16 @@ let activeChatId = null;
 
   // Listen for chat switches — key state per chat
   spindle.on("CHAT_SWITCHED", async ({ chatId }) => {
-    activeChatId = chatId;
-    if (!chatId) {
-      // Back to home screen — clear widget
-      spindle.sendToFrontend({ type: "state_reset" });
-      return;
-    }
-    const state = await loadState(chatId);
-    spindle.updateMacroValue("scene_state", buildMacroValue(state));
-    spindle.sendToFrontend({ type: "state_updated", state, chatId });
-    spindle.log.info("[SceneTracker] Chat switched → " + chatId);
-  });
+  activeChatId = chatId;
+  if (!chatId) {
+    spindle.sendToFrontend({ type: "state_reset" });
+    return;
+  }
+  const state = await loadState(chatId);
+  spindle.updateMacroValue("scene_state", buildMacroValue(state));
+  // Send exactly once — don't also handle "request_state" racing with this
+  spindle.sendToFrontend({ type: "state_updated", state, chatId });
+});
 
   spindle.log.info("[SceneTracker] Ready.");
 })();
@@ -104,8 +103,11 @@ spindle.onFrontendMessage(async (payload) => {
       break;
     }
     case "request_state": {
-      const state = await loadState(chatId);
-      spindle.sendToFrontend({ type: "state_updated", state, chatId });
+      // Only respond if we haven't just sent state via CHAT_SWITCHED
+      // (frontend sends this on setup, but CHAT_SWITCHED will already cover it)
+      if (!activeChatId) return;
+      const state = await loadState(activeChatId);
+      spindle.sendToFrontend({ type: "state_updated", state, chatId: activeChatId });
       break;
     }
   }

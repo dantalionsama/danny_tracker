@@ -415,37 +415,33 @@ export function setup(ctx) {
   // ── Tag interceptor ──────────────────────────────────────────────────────────
 
   const unsubTag = ctx.messages.registerTagInterceptor(
-    { tagName: "scene-state", removeFromMessage: true },
-    (payload) => {
-      if (payload.isUser) return;
-      // Ignore historical renders (scroll-up). Only process if:
-      // • message is currently streaming, OR
-      // • it's the most recent message we know about, OR
-      // • we haven't seen any generation end yet (first message in chat)
-      if (
-        !payload.isStreaming &&
-        latestMsgId !== null &&
-        payload.messageId !== latestMsgId
-      ) return;
-      try {
-        const data = JSON.parse(payload.content || payload.innerText || "{}");
-        if (data.scene) state.scene = { ...state.scene, ...data.scene };
-        if (Array.isArray(data.characters)) {
-          for (const char of data.characters) {
-            const { name, ...fields } = char;
-            if (!name) continue;
-            state.characters[name] = { ...(state.characters[name] || {}), ...fields };
-            if (!activeTab) activeTab = name;
-          }
-        }
-        repaint();
-        isCollapsed ? flashPill() : flashCard();
-        ctx.sendToBackend({ type: "tag_parsed", scene: data.scene || {}, characters: data.characters || [] });
-      } catch (e) {
-        ctx.log?.warn("[SceneTracker] Tag parse error: " + e.message);
-      }
+  { tagName: "scene-state", removeFromMessage: true },
+  (payload) => {
+    if (payload.isUser) return;
+
+    // Only process the actively streaming/just-completed message
+    if (
+      !payload.isStreaming &&
+      latestMsgId !== null &&
+      payload.messageId !== latestMsgId
+    ) return;
+
+    // DON'T mutate state here — just forward to backend.
+    // The backend will persist it and send back a state_updated,
+    // which is the single place we update local state.
+    try {
+      const data = JSON.parse(payload.content || payload.innerText || "{}");
+      ctx.sendToBackend({
+        type: "tag_parsed",
+        scene: data.scene || {},
+        characters: data.characters || [],
+      });
+      isCollapsed ? flashPill() : flashCard();
+    } catch (e) {
+      ctx.log?.warn("[SceneTracker] Tag parse error: " + e.message);
     }
-  );
+  }
+);
 
   // ── Backend messages ─────────────────────────────────────────────────────────
 
