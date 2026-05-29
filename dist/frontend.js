@@ -10,6 +10,7 @@ const CHAR_FIELDS = ["mood", "attire", "position", "location"];
 
 const ICONS = {
   time: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>`,
+  date: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,
   weather: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 0 1 0 9Z"/></svg>`,
   mood: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>`,
   attire: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.57a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.57a2 2 0 0 0-1.34-2.23z"/></svg>`,
@@ -106,10 +107,10 @@ function buildWidget(state, activeTab, isCollapsed) {
       </button>`;
   }
 
-  const scene = state.scene || {};
+  const scene      = state.scene || {};
   const characters = state.characters || {};
-  const charNames = Object.keys(characters);
-  const hasChars = charNames.length > 0;
+  const charNames  = Object.keys(characters);
+  const hasChars   = charNames.length > 0;
   const charFields = activeTab ? (characters[activeTab] || {}) : {};
 
   return `
@@ -122,7 +123,12 @@ function buildWidget(state, activeTab, isCollapsed) {
       </div>
 
       <div class="st-scene-section">
-        ${Object.entries(scene).map(([k, v]) => buildSceneRow(k, v)).join("")}
+        <div class="st-scene-row st-scene-row--inline">
+          ${icon("date")}<span class="st-scene-value">${escHtml(scene.date || "—")}</span>
+          <span class="st-scene-divider">·</span>
+          ${icon("time")}<span class="st-scene-value">${escHtml(scene.time || "—")}</span>
+        </div>
+        ${buildSceneRow("weather", scene.weather)}
       </div>
 
       ${hasChars ? `
@@ -308,6 +314,17 @@ const STYLES = `
   }
   .st-pill svg { width: 13px; height: 13px; flex-shrink: 0; }
   .st-pill:hover { background: rgba(28,20,52,0.95); color: rgba(255,255,255,0.9); }
+
+  /* Inline style */
+  .st-scene-row--inline {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .st-scene-divider {
+    opacity: 0.3;
+    font-size: 11px;
+    margin: 0 2px; }
 
   /* ── Flash ── */
   @keyframes st-pulse {
