@@ -83,13 +83,16 @@ spindle.onFrontendMessage(async (payload) => {
     case "tag_parsed": {
       const current = await loadState(chatId);
       if (payload.scene) current.scene = { ...current.scene, ...payload.scene };
-      if (Array.isArray(payload.characters)) {
-        for (const char of payload.characters) {
-          const { name, ...fields } = char;
-          if (!name) continue;
-          current.characters[name] = { ...(current.characters[name] || {}), ...fields };
-        }
-      }
+      if (Array.isArray(payload.characters) && payload.characters.length > 0) {
+      const updated = {};
+      for (const char of payload.characters) {
+      const { name, ...fields } = char;
+      if (!name) continue;
+      // Preserve any existing fields, then apply updates
+      updated[name] = { ...(current.characters[name] || {}), ...fields };
+    }
+      current.characters = updated;
+    }
       await saveState(chatId, current);
       spindle.updateMacroValue("scene_state", buildMacroValue(current));
       spindle.sendToFrontend({ type: "state_updated", state: current, chatId });
