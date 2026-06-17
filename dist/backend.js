@@ -4,6 +4,9 @@
 const DEFAULT_SCENE = { time: "unknown", weather: "unknown" };
 const TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
+// Matches a full <scene-state>...</scene-state> tag, across newlines
+const SCENE_TAG_RE = /<scene-state>[\s\S]*?<\/scene-state>/g;
+
 function storageKey(chatId) {
   return `scene_state_${chatId}.json`;
 }
@@ -111,6 +114,47 @@ spindle.onFrontendMessage(async (payload) => {
       if (!activeChatId) return;
       const state = await loadState(activeChatId);
       spindle.sendToFrontend({ type: "state_updated", state, chatId: activeChatId });
+      break;
+    }
+    case "cleanup_old_tags": {
+      const keepCount = Number.isFinite(payload.keepCount) && payload.keepCount > 0
+        ? Math.floor(payload.keepCount)
+        : 3;
+
+      try {
+        const messages = await spindle.chat.getMessages(chatId);
+
+        // Only assistant messages carry a scene-state tag. Walk in
+        // chronological order, find ones with a tag, keep the last
+        // `keepCount` of those untouched, strip the tag from the rest.
+        const taggedMessages = messages.filter((m) => {
+          const hasTag = m.role === "assistant" && SCENE_TAG_RE.test(m.content);
+          SCENE_TAG_RE.lastIndex = 0; // reset — .test() advances lastIndex on a /g regex
+          return hasTag;
+        });
+
+        const toStrip = taggedMessages.slice(0, Math.max(0, taggedMessages.length - keepCount));
+
+        let cleaned = 0;
+        for (const msg of toStrip) {
+          const stripped = msg.content.replace(SCENE_TAG_RE, "").replace(/\n{3,}/g, "\n\n").trimEnd();
+          if (stripped !== msg.content) {
+            await spindle.chat.updateMessage(chatId, msg.id, { content: stripped });
+            cleaned++;
+          }
+        }
+
+        spindle.sendToFrontend({
+          type: "cleanup_done",
+          cleaned,
+          kept: Math.min(keepCount, taggedMessages.length),
+          chatId,
+        });
+        spindle.log.info(`[SceneTracker] Cleaned ${cleaned} old scene tags, kept last ${keepCount}.`);
+      } catch (e) {
+        spindle.log.warn("[SceneTracker] Cleanup failed: " + e.message);
+        spindle.sendToFrontend({ type: "cleanup_error", message: e.message, chatId });
+      }
       break;
     }
   }

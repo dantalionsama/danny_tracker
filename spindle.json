@@ -1,5 +1,5 @@
 {
-  "version": "1.6.0",
+  "version": "1.6.5",
   "name": "Danny's Tracker",
   "identifier": "danny_tracker",
   "author": "dantalionsama",
@@ -9,7 +9,8 @@
   "permissions": [
     "ephemeral_storage",
     "ui_panels",
-    "chats"
+    "chats",
+    "chat_mutation"
   ],
   "entry_backend": "dist/backend.js",
   "entry_frontend": "dist/frontend.js",

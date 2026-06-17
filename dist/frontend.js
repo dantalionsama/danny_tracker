@@ -177,7 +177,7 @@ function buildDrawerCharCard(name, fields, isCardCollapsed) {
     </div>`;
 }
 
-function buildDrawerTab(state, collapsedChars) {
+function buildDrawerTab(state, collapsedChars, keepCount) {
   const scene      = state.scene || {};
   const characters = state.characters || {};
   const charNames  = Object.keys(characters);
@@ -204,6 +204,21 @@ function buildDrawerTab(state, collapsedChars) {
       ${charNames.length
         ? `${toggleAllRow}<div class="st-drawer-list">${charNames.map(name => buildDrawerCharCard(name, characters[name], collapsedChars.has(name))).join("")}</div>`
         : `<p class="st-empty st-empty--pad">Waiting for first AI message…</p>`}
+
+      <div class="st-drawer-cleanup">
+        <span class="st-drawer-cleanup-label">Keep last</span>
+        <input
+          type="number"
+          id="st-drawer-keep-count"
+          class="st-drawer-keep-input"
+          min="1"
+          max="50"
+          value="${escAttr(String(keepCount))}"
+        />
+        <span class="st-drawer-cleanup-label">tagged messages</span>
+        <button class="st-drawer-cleanup-btn" id="st-drawer-cleanup-btn">Clean up old tags</button>
+        <span class="st-drawer-cleanup-status" id="st-drawer-cleanup-status"></span>
+      </div>
     </div>`;
 }
 
@@ -524,6 +539,55 @@ const STYLES = `
   .st-drawer-toggle-all:hover {
     color: var(--lumiverse-text, inherit);
   }
+  .st-drawer-cleanup {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 18px;
+    padding-top: 12px;
+    border-top: 1px solid var(--lumiverse-border, rgba(127,127,127,0.12));
+  }
+  .st-drawer-cleanup-label {
+    font-size: 11.5px;
+    color: var(--lumiverse-text-dim, rgba(127,127,127,0.6));
+  }
+  .st-drawer-keep-input {
+    width: 40px;
+    font-family: inherit;
+    font-size: 12px;
+    text-align: center;
+    color: var(--lumiverse-text, inherit);
+    background: var(--lumiverse-fill-subtle, rgba(127,127,127,0.08));
+    border: 1px solid var(--lumiverse-border, rgba(127,127,127,0.15));
+    border-radius: 4px;
+    padding: 2px 4px;
+  }
+  .st-drawer-cleanup-btn {
+    font-family: inherit;
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--lumiverse-text, inherit);
+    background: var(--lumiverse-fill-subtle, rgba(127,127,127,0.08));
+    border: 1px solid var(--lumiverse-border, rgba(127,127,127,0.15));
+    border-radius: 5px;
+    padding: 4px 10px;
+    cursor: pointer;
+    margin-left: auto;
+    transition: background 0.12s;
+  }
+  .st-drawer-cleanup-btn:hover {
+    background: var(--lumiverse-fill-hover, rgba(127,127,127,0.14));
+  }
+  .st-drawer-cleanup-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  .st-drawer-cleanup-status {
+    width: 100%;
+    font-size: 11px;
+    color: var(--lumiverse-text-dim, rgba(127,127,127,0.6));
+  }
 `;
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
@@ -552,6 +616,13 @@ export function setup(ctx) {
   function saveCollapsedChars() {
     try { localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...collapsedChars])); } catch {}
   }
+
+  const KEEP_COUNT_KEY = "scene_tracker_keep_count";
+  let keepCount = 3;
+  try {
+    const stored = localStorage.getItem(KEEP_COUNT_KEY);
+    if (stored) keepCount = Math.max(1, parseInt(stored, 10) || 3);
+  } catch {}
 
   const floatWidget = ctx.ui.createFloatWidget({
     width: 300,
@@ -626,7 +697,7 @@ export function setup(ctx) {
 
     // Drawer tab gets the same data, different layout — no tabs to manage,
     // just every character's card and a remove button on each.
-    drawerTab.root.innerHTML = buildDrawerTab(state, collapsedChars);
+    drawerTab.root.innerHTML = buildDrawerTab(state, collapsedChars, keepCount);
     drawerTab.root.querySelectorAll(".st-tab-close").forEach(btn => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -659,6 +730,25 @@ export function setup(ctx) {
       }
       saveCollapsedChars();
       repaint();
+    });
+
+    // Cleanup: strip old <scene-state> tags from message content,
+    // keeping the most recent N. Purely a token-saving maintenance action —
+    // never touches the live tracker state itself.
+    const keepInput = drawerTab.root.querySelector("#st-drawer-keep-count");
+    keepInput?.addEventListener("change", () => {
+      const val = Math.max(1, parseInt(keepInput.value, 10) || 3);
+      keepCount = val;
+      try { localStorage.setItem(KEEP_COUNT_KEY, String(val)); } catch {}
+    });
+
+    const cleanupBtn = drawerTab.root.querySelector("#st-drawer-cleanup-btn");
+    const cleanupStatus = drawerTab.root.querySelector("#st-drawer-cleanup-status");
+    cleanupBtn?.addEventListener("click", () => {
+      const val = Math.max(1, parseInt(keepInput?.value, 10) || keepCount);
+      cleanupBtn.disabled = true;
+      if (cleanupStatus) cleanupStatus.textContent = "Cleaning up…";
+      ctx.sendToBackend({ type: "cleanup_old_tags", keepCount: val });
     });
   }
 
@@ -717,6 +807,20 @@ export function setup(ctx) {
       state = { scene: {}, characters: {} };
       activeTab = null;
       repaint();
+    } else if (payload.type === "cleanup_done") {
+      const btn = drawerTab.root.querySelector("#st-drawer-cleanup-btn");
+      const status = drawerTab.root.querySelector("#st-drawer-cleanup-status");
+      if (btn) btn.disabled = false;
+      if (status) {
+        status.textContent = payload.cleaned > 0
+          ? `Cleaned ${payload.cleaned} old tag${payload.cleaned === 1 ? "" : "s"}, kept last ${payload.kept}.`
+          : "Nothing to clean up — already within the keep limit.";
+      }
+    } else if (payload.type === "cleanup_error") {
+      const btn = drawerTab.root.querySelector("#st-drawer-cleanup-btn");
+      const status = drawerTab.root.querySelector("#st-drawer-cleanup-status");
+      if (btn) btn.disabled = false;
+      if (status) status.textContent = "Cleanup failed — check the extension log.";
     }
   });
 
