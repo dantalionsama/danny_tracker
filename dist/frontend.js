@@ -142,7 +142,7 @@ function buildWidget(state, activeTab, isCollapsed) {
 // Same data as the floating widget, laid out as a full list (no tabs) since
 // the sidebar has height to spare instead of width.
 
-function buildDrawerCharCard(name, fields) {
+function buildDrawerCharCard(name, fields, isCardCollapsed) {
   const [h, s, l] = getMoodHsl(fields.mood || "");
   const keys = CHAR_FIELDS.filter(k => k in fields);
   const extra = Object.keys(fields).filter(k => !CHAR_FIELDS.includes(k));
@@ -155,17 +155,29 @@ function buildDrawerCharCard(name, fields) {
       </div>
     </div>`).join("");
 
+  const chevron = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
+
+  const collapsedPreview = `
+    <div class="st-drawer-preview">
+      ${icon("position")}<span class="st-scene-value">${escHtml(fields.position || "—")}</span>
+    </div>`;
+
   return `
-    <div class="st-drawer-card" style="--st-mood-h:${h}; --st-mood-s:${s}%; --st-mood-l:${l}%;" data-char="${escAttr(name)}">
+    <div class="st-drawer-card ${isCardCollapsed ? "st-drawer-card--collapsed" : ""}" style="--st-mood-h:${h}; --st-mood-s:${s}%; --st-mood-l:${l}%;" data-char="${escAttr(name)}">
       <div class="st-drawer-card-header">
         <span class="st-drawer-card-name">${escHtml(name)}</span>
-        <span class="st-tab-close" data-remove="${escAttr(name)}">×</span>
+        <div class="st-drawer-card-actions">
+          <button class="st-drawer-chevron" data-collapse-toggle="${escAttr(name)}" aria-label="Toggle details">${chevron}</button>
+          <span class="st-tab-close" data-remove="${escAttr(name)}">×</span>
+        </div>
       </div>
-      <div class="st-char-section st-drawer-char-section">${rows || `<p class="st-empty">No data yet.</p>`}</div>
+      ${isCardCollapsed
+        ? collapsedPreview
+        : `<div class="st-char-section st-drawer-char-section">${rows || `<p class="st-empty">No data yet.</p>`}</div>`}
     </div>`;
 }
 
-function buildDrawerTab(state) {
+function buildDrawerTab(state, collapsedChars) {
   const scene      = state.scene || {};
   const characters = state.characters || {};
   const charNames  = Object.keys(characters);
@@ -182,7 +194,7 @@ function buildDrawerTab(state) {
       </div>
 
       ${charNames.length
-        ? `<div class="st-drawer-list">${charNames.map(name => buildDrawerCharCard(name, characters[name])).join("")}</div>`
+        ? `<div class="st-drawer-list">${charNames.map(name => buildDrawerCharCard(name, characters[name], collapsedChars.has(name))).join("")}</div>`
         : `<p class="st-empty st-empty--pad">Waiting for first AI message…</p>`}
     </div>`;
 }
@@ -445,6 +457,45 @@ const STYLES = `
   .st-drawer-char-section .st-icon {
     opacity: 0.8;
   }
+  .st-drawer-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .st-drawer-chevron {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--lumiverse-text-dim, rgba(127,127,127,0.6));
+    cursor: pointer;
+    transition: transform 0.15s ease, color 0.12s;
+  }
+  .st-drawer-chevron svg {
+    width: 14px;
+    height: 14px;
+  }
+  .st-drawer-chevron:hover {
+    color: var(--lumiverse-text, inherit);
+  }
+  .st-drawer-card--collapsed .st-drawer-chevron {
+    transform: rotate(-90deg);
+  }
+  .st-drawer-preview {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0 2px;
+  }
+  .st-drawer-preview .st-scene-value {
+    color: var(--lumiverse-text, inherit);
+    opacity: 0.85;
+    font-size: 12.5px;
+  }
 `;
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
@@ -463,6 +514,16 @@ export function setup(ctx) {
     const stored = localStorage.getItem(POSITION_KEY);
     if (stored) savedPos = JSON.parse(stored);
   } catch {}
+
+  const COLLAPSED_KEY = "scene_tracker_collapsed_chars";
+  let collapsedChars = new Set();
+  try {
+    const stored = localStorage.getItem(COLLAPSED_KEY);
+    if (stored) collapsedChars = new Set(JSON.parse(stored));
+  } catch {}
+  function saveCollapsedChars() {
+    try { localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...collapsedChars])); } catch {}
+  }
 
   const floatWidget = ctx.ui.createFloatWidget({
     width: 300,
@@ -528,6 +589,8 @@ export function setup(ctx) {
         const name = btn.dataset.remove;
         delete state.characters[name];
         if (activeTab === name) activeTab = null;
+        collapsedChars.delete(name);
+        saveCollapsedChars();
         ctx.sendToBackend({ type: "remove_character", name });
         repaint();
       });
@@ -535,14 +598,26 @@ export function setup(ctx) {
 
     // Drawer tab gets the same data, different layout — no tabs to manage,
     // just every character's card and a remove button on each.
-    drawerTab.root.innerHTML = buildDrawerTab(state);
+    drawerTab.root.innerHTML = buildDrawerTab(state, collapsedChars);
     drawerTab.root.querySelectorAll(".st-tab-close").forEach(btn => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         const name = btn.dataset.remove;
         delete state.characters[name];
         if (activeTab === name) activeTab = null;
+        collapsedChars.delete(name);
+        saveCollapsedChars();
         ctx.sendToBackend({ type: "remove_character", name });
+        repaint();
+      });
+    });
+    drawerTab.root.querySelectorAll(".st-drawer-chevron").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const name = btn.dataset.collapseToggle;
+        if (collapsedChars.has(name)) collapsedChars.delete(name);
+        else collapsedChars.add(name);
+        saveCollapsedChars();
         repaint();
       });
     });
