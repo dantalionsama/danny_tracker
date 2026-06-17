@@ -181,6 +181,14 @@ function buildDrawerTab(state, collapsedChars) {
   const scene      = state.scene || {};
   const characters = state.characters || {};
   const charNames  = Object.keys(characters);
+  const allCollapsed = charNames.length > 0 && charNames.every(n => collapsedChars.has(n));
+
+  const toggleAllRow = charNames.length > 1 ? `
+    <div class="st-drawer-toggle-row">
+      <button class="st-drawer-toggle-all" id="st-drawer-toggle-all">
+        ${allCollapsed ? "Expand all" : "Collapse all"}
+      </button>
+    </div>` : "";
 
   return `
     <div class="st-drawer">
@@ -194,7 +202,7 @@ function buildDrawerTab(state, collapsedChars) {
       </div>
 
       ${charNames.length
-        ? `<div class="st-drawer-list">${charNames.map(name => buildDrawerCharCard(name, characters[name], collapsedChars.has(name))).join("")}</div>`
+        ? `${toggleAllRow}<div class="st-drawer-list">${charNames.map(name => buildDrawerCharCard(name, characters[name], collapsedChars.has(name))).join("")}</div>`
         : `<p class="st-empty st-empty--pad">Waiting for first AI message…</p>`}
     </div>`;
 }
@@ -422,13 +430,14 @@ const STYLES = `
   .st-drawer-list {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 14px;
   }
   .st-drawer-card {
     border-left: 3px solid hsla(var(--st-mood-h), var(--st-mood-s), var(--st-mood-l), 0.7);
-    background: var(--lumiverse-fill-subtle, rgba(127,127,127,0.06));
+    background: hsla(var(--st-mood-h), var(--st-mood-s), var(--st-mood-l), 0.1);
     border-radius: 8px;
     padding: 10px 12px;
+    transition: background 0.2s ease;
   }
   .st-drawer-card-header {
     display: flex;
@@ -495,6 +504,25 @@ const STYLES = `
     color: var(--lumiverse-text, inherit);
     opacity: 0.85;
     font-size: 12.5px;
+  }
+  .st-drawer-toggle-row {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 8px;
+  }
+  .st-drawer-toggle-all {
+    font-family: inherit;
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--lumiverse-text-dim, rgba(127,127,127,0.6));
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 2px 4px;
+    transition: color 0.12s;
+  }
+  .st-drawer-toggle-all:hover {
+    color: var(--lumiverse-text, inherit);
   }
 `;
 
@@ -620,6 +648,17 @@ export function setup(ctx) {
         saveCollapsedChars();
         repaint();
       });
+    });
+    drawerTab.root.querySelector("#st-drawer-toggle-all")?.addEventListener("click", () => {
+      const charNames = Object.keys(state.characters || {});
+      const allCollapsed = charNames.length > 0 && charNames.every(n => collapsedChars.has(n));
+      if (allCollapsed) {
+        collapsedChars.clear();
+      } else {
+        charNames.forEach(n => collapsedChars.add(n));
+      }
+      saveCollapsedChars();
+      repaint();
     });
   }
 
