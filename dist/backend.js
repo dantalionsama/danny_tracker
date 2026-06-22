@@ -99,16 +99,22 @@ let activeChatId = null;
   // ones), re-derive tracker state straight from that swipe's own
   // <scene-state> tag rather than trusting the frontend's running tally.
   spindle.on("MESSAGE_SWIPED", async ({ chatId, message, action, swipeId }) => {
+    spindle.log.warn(`[SceneTracker][DEBUG] MESSAGE_SWIPED fired - action=${action} swipeId=${swipeId} chatId=${chatId} activeChatId=${activeChatId}`);
     if (chatId !== activeChatId) return;
     if (action !== "added" && action !== "navigated") return; // ignore deleted/updated
-    if (!message || !Array.isArray(message.swipes)) return;
+    if (!message || !Array.isArray(message.swipes)) {
+      spindle.log.warn("[SceneTracker][DEBUG] No message.swipes array - bailing");
+      return;
+    }
 
     const swipeContent = message.swipes[swipeId];
-    if (typeof swipeContent !== "string") return;
+    if (typeof swipeContent !== "string") {
+      spindle.log.warn(`[SceneTracker][DEBUG] swipes[${swipeId}] is not a string: ${typeof swipeContent}`);
+      return;
+    }
 
     const tagState = extractTagState(swipeContent);
-    // No tag on this swipe yet (e.g. mid-stream race) — leave tracker as-is
-    // rather than blanking it; a later tag_parsed or swipe event will catch up.
+    spindle.log.warn(`[SceneTracker][DEBUG] extracted tag state: ${tagState ? JSON.stringify(tagState).slice(0, 200) : "null (no tag found)"}`);
     if (!tagState) return;
 
     const current = await loadState(chatId);
