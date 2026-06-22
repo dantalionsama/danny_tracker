@@ -99,6 +99,7 @@ let activeChatId = null;
   // ones), re-derive tracker state straight from that swipe's own
   // <scene-state> tag rather than trusting the frontend's running tally.
   spindle.on("MESSAGE_SWIPED", async ({ chatId, message, action, swipeId }) => {
+    spindle.log.warn(`[SceneTracker][DEBUG2] action=${action} swipeId=${swipeId} swipesLen=${message?.swipes?.length} content_len=${message?.swipes?.[swipeId]?.length}`);
     if (chatId !== activeChatId) return;
     if (action === "deleted") return; // nothing to re-derive from a removed slot
     if (!message || !Array.isArray(message.swipes)) return;
@@ -107,6 +108,7 @@ let activeChatId = null;
     if (typeof swipeContent !== "string") return;
 
     const tagState = extractTagState(swipeContent);
+    spindle.log.warn(`[SceneTracker][DEBUG2] tagState=${tagState ? JSON.stringify(tagState).slice(0,150) : "null"}`);
     // No complete tag yet (e.g. fires while still streaming) - leave tracker
     // as-is; the next MESSAGE_SWIPED "updated" event will catch up once done.
     if (!tagState) return;
