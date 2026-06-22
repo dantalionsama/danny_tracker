@@ -131,7 +131,6 @@ let activeChatId = null;
       }
     }
 
-    spindle.log.warn(`[ST][DBG] SWIPE preview sent - action=${action} swipeId=${swipeId} preview=${JSON.stringify(preview).slice(0,150)}`);
     // Display only - deliberately skip saveState() and updateMacroValue()
     // so swipe exploration never pollutes the macro fed into generation.
     spindle.sendToFrontend({ type: "state_updated", state: preview, chatId });
@@ -146,7 +145,6 @@ spindle.onFrontendMessage(async (payload) => {
 
   switch (payload.type) {
     case "tag_parsed": {
-      spindle.log.warn(`[ST][DBG] TAG_PARSED received - scene=${JSON.stringify(payload.scene)} chars=${(payload.characters||[]).length}`);
       const current = await loadState(chatId);
       if (payload.scene) current.scene = { ...current.scene, ...payload.scene };
       if (Array.isArray(payload.characters) && payload.characters.length > 0) {

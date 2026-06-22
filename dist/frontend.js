@@ -597,7 +597,14 @@ export function setup(ctx) {
   let activeTab   = null;
   let isCollapsed    = false;
   let latestMsgId    = null;   // only process tags from the most recent message
-  let isAwaitingFirstTag = true; // true until the current message's first (non-swipe) tag has committed
+  // Starts LOCKED (false). If this defaulted to true, every page load or
+  // extension reload would treat whatever message tag happens to render
+  // first (e.g. old chat history loading in) as "the original generation"
+  // and commit it over the real saved state - which is exactly what
+  // happened on refresh. The only legitimate unlock is the USER sending a
+  // new message in this session (MESSAGE_SENT, wired below) - that's the
+  // one reliable signal that a genuinely fresh AI generation is coming.
+  let isAwaitingFirstTag = false;
 
   const removeStyle = ctx.dom.addStyle(STYLES);
 
@@ -653,14 +660,15 @@ export function setup(ctx) {
   });
 
   // Track which message is the latest so scroll renders don't trigger updates.
-  // Also: a NEW messageId here means a fresh message just finished generating
-  // (not a swipe of the current one, which keeps the same messageId) — so
-  // that's the signal to unlock the tag interceptor for the next message.
   const unsubGenEnded = ctx.events.on("GENERATION_ENDED", (payload) => {
-    if (payload.messageId && payload.messageId !== latestMsgId) {
-      latestMsgId = payload.messageId;
-      isAwaitingFirstTag = true;
-    }
+    if (payload.messageId) latestMsgId = payload.messageId;
+  });
+
+  // The user sending a new message is the one reliable "a fresh, genuine
+  // AI generation is about to happen" signal - unlock the tag interceptor
+  // so the very next completed tag gets committed to settled state.
+  const unsubMsgSent = ctx.events.on("MESSAGE_SENT", () => {
+    isAwaitingFirstTag = true;
   });
 
   // ── Repaint ──────────────────────────────────────────────────────────────────
@@ -779,23 +787,23 @@ export function setup(ctx) {
   // "the original generation, completing" apart from "a swipe variant,
   // streaming or being redisplayed." Committing tag_parsed for the latter
   // would pollute settled state/the macro with whatever swipe happens to
-  // be on screen, which is exactly the swipe-state bug.
+  // be on screen, which is exactly the swipe-state bug. isStreaming alone
+  // doesn't help either — swipes stream live too.
   //
-  // Fix: only ever forward tag_parsed while GENERATION_ENDED has not yet
-  // fired for the CURRENT message generation we're watching. The first
-  // time a message's tag completes (the original, non-swipe generation),
-  // we forward it and then lock the door — isAwaitingFirstTag flips false
-  // and stays false until a brand new message starts (handled by the
-  // GENERATION_ENDED listener resetting it below). Any swipe activity on
-  // this message after that point is handled exclusively by the backend's
-  // MESSAGE_SWIPED listener, which updates the widget display only and
-  // never touches settled state.
+  // Fix: the ONLY unlock signal is MESSAGE_SENT — the user sending a new
+  // message is the one unambiguous "a fresh exchange is starting" event,
+  // completely separate from swipe activity on an existing message. We
+  // unlock right when that fires, then commit the first complete tag we
+  // see afterward (the new message's original generation) and lock shut
+  // again. Any swipe activity after that point is handled exclusively by
+  // the backend's MESSAGE_SWIPED listener, which updates the widget
+  // display only and never touches settled state.
 
   const unsubTag = ctx.messages.registerTagInterceptor(
   { tagName: "scene-state", removeFromMessage: true },
   (payload) => {
     if (payload.isUser) return;
-    if (!isAwaitingFirstTag) return; // already settled this message — swipes go through the backend's swipe handler instead
+    if (!isAwaitingFirstTag) return; // already settled this message, or never unlocked this session (e.g. page refresh)
 
     // Only process the actively streaming/just-completed message
     if (
@@ -860,7 +868,10 @@ export function setup(ctx) {
     state = { scene: {}, characters: {} };
     activeTab = null;
     latestMsgId = null;
-    isAwaitingFirstTag = true;
+    // LOCKED, not unlocked - the next tag interceptor firing in the new
+    // chat will be from existing history rendering in, not a fresh
+    // generation. Only MESSAGE_SENT in this (new) chat should unlock it.
+    isAwaitingFirstTag = false;
     repaint();
   });
 
@@ -872,6 +883,7 @@ export function setup(ctx) {
     unsubBackend();
     unsubChatSwitch();
     unsubGenEnded();
+    unsubMsgSent();
     removeStyle();
     floatWidget.destroy();
     drawerTab.destroy();
