@@ -99,22 +99,16 @@ let activeChatId = null;
   // ones), re-derive tracker state straight from that swipe's own
   // <scene-state> tag rather than trusting the frontend's running tally.
   spindle.on("MESSAGE_SWIPED", async ({ chatId, message, action, swipeId }) => {
-    spindle.log.warn(`[SceneTracker][DEBUG] MESSAGE_SWIPED fired - action=${action} swipeId=${swipeId} chatId=${chatId} activeChatId=${activeChatId}`);
     if (chatId !== activeChatId) return;
     if (action === "deleted") return; // nothing to re-derive from a removed slot
-    if (!message || !Array.isArray(message.swipes)) {
-      spindle.log.warn("[SceneTracker][DEBUG] No message.swipes array - bailing");
-      return;
-    }
+    if (!message || !Array.isArray(message.swipes)) return;
 
     const swipeContent = message.swipes[swipeId];
-    if (typeof swipeContent !== "string") {
-      spindle.log.warn(`[SceneTracker][DEBUG] swipes[${swipeId}] is not a string: ${typeof swipeContent}`);
-      return;
-    }
+    if (typeof swipeContent !== "string") return;
 
     const tagState = extractTagState(swipeContent);
-    spindle.log.warn(`[SceneTracker][DEBUG] extracted tag state: ${tagState ? JSON.stringify(tagState).slice(0, 200) : "null (no tag found)"}`);
+    // No complete tag yet (e.g. fires while still streaming) - leave tracker
+    // as-is; the next MESSAGE_SWIPED "updated" event will catch up once done.
     if (!tagState) return;
 
     const current = await loadState(chatId);
