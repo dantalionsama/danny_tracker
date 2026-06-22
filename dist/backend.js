@@ -6,6 +6,22 @@ const TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 // Matches a full <scene-state>...</scene-state> tag, across newlines
 const SCENE_TAG_RE = /<scene-state>[\s\S]*?<\/scene-state>/g;
+// Non-global version for single extraction (avoids lastIndex bugs)
+const SCENE_TAG_EXTRACT_RE = /<scene-state>([\s\S]*?)<\/scene-state>/;
+
+// Pulls the scene-state JSON out of a message's raw content, if present.
+// Returns null if no tag or invalid JSON — caller should fall back to
+// whatever the last-known-good state was rather than wiping the tracker.
+function extractTagState(content) {
+  if (!content) return null;
+  const match = content.match(SCENE_TAG_EXTRACT_RE);
+  if (!match) return null;
+  try {
+    return JSON.parse(match[1]);
+  } catch {
+    return null;
+  }
+}
 
 function storageKey(chatId) {
   return `scene_state_${chatId}.json`;
@@ -74,6 +90,44 @@ let activeChatId = null;
   // Send exactly once — don't also handle "request_state" racing with this
   spindle.sendToFrontend({ type: "state_updated", state, chatId });
 });
+
+  // Swipes/regenerates: the frontend's streamed-tag tracking only sees
+  // whichever message is being actively generated, so a fresh swipe
+  // inherits whatever the PREVIOUS swipe last wrote — not what was true
+  // before that message existed. Fix: whenever the active swipe changes
+  // (a new one is generated, or the user navigates between existing
+  // ones), re-derive tracker state straight from that swipe's own
+  // <scene-state> tag rather than trusting the frontend's running tally.
+  spindle.on("MESSAGE_SWIPED", async ({ chatId, message, action, swipeId }) => {
+    if (chatId !== activeChatId) return;
+    if (action !== "added" && action !== "navigated") return; // ignore deleted/updated
+    if (!message || !Array.isArray(message.swipes)) return;
+
+    const swipeContent = message.swipes[swipeId];
+    if (typeof swipeContent !== "string") return;
+
+    const tagState = extractTagState(swipeContent);
+    // No tag on this swipe yet (e.g. mid-stream race) — leave tracker as-is
+    // rather than blanking it; a later tag_parsed or swipe event will catch up.
+    if (!tagState) return;
+
+    const current = await loadState(chatId);
+    const next = {
+      scene: { ...current.scene, ...(tagState.scene || {}) },
+      characters: {},
+    };
+    if (Array.isArray(tagState.characters) && tagState.characters.length > 0) {
+      for (const char of tagState.characters) {
+        const { name, ...fields } = char;
+        if (!name) continue;
+        next.characters[name] = fields;
+      }
+    }
+
+    await saveState(chatId, next);
+    spindle.updateMacroValue("scene_state", buildMacroValue(next));
+    spindle.sendToFrontend({ type: "state_updated", state: next, chatId });
+  });
 
   spindle.log.info("[SceneTracker] Ready.");
 })();
