@@ -91,15 +91,18 @@ let activeChatId = null;
   spindle.sendToFrontend({ type: "state_updated", state, chatId });
 });
 
-  // Swipes/regenerates: the frontend's streamed-tag tracking only sees
-  // whichever message is being actively generated, so a fresh swipe
-  // inherits whatever the PREVIOUS swipe last wrote — not what was true
-  // before that message existed. Fix: whenever the active swipe changes
-  // (a new one is generated, or the user navigates between existing
-  // ones), re-derive tracker state straight from that swipe's own
-  // <scene-state> tag rather than trusting the frontend's running tally.
+  // Swipes/regenerates must NEVER touch the {{scene_state}} macro or the
+  // "settled" saved state. The macro is read by the LLM BEFORE a swipe
+  // generates, so it should always reflect the state as of the message
+  // BEFORE the one being swiped - frozen, regardless of how many swipes
+  // happen. Each swipe is a fresh "what happens next from the settled
+  // state" attempt, not a chain building on the previous swipe.
+  //
+  // So: swipes only update what the WIDGET displays (via a transient
+  // preview), completely separate from settled state/macro. Settled
+  // state only ever advances via tag_parsed (a genuinely new, non-swipe
+  // message).
   spindle.on("MESSAGE_SWIPED", async ({ chatId, message, action, swipeId }) => {
-    spindle.log.warn(`[SceneTracker][DEBUG2] action=${action} swipeId=${swipeId} swipesLen=${message?.swipes?.length} content_len=${message?.swipes?.[swipeId]?.length}`);
     if (chatId !== activeChatId) return;
     if (action === "deleted") return; // nothing to re-derive from a removed slot
     if (!message || !Array.isArray(message.swipes)) return;
@@ -108,27 +111,29 @@ let activeChatId = null;
     if (typeof swipeContent !== "string") return;
 
     const tagState = extractTagState(swipeContent);
-    spindle.log.warn(`[SceneTracker][DEBUG2] tagState=${tagState ? JSON.stringify(tagState).slice(0,150) : "null"}`);
-    // No complete tag yet (e.g. fires while still streaming) - leave tracker
+    // No complete tag yet (e.g. fires while still streaming) - leave widget
     // as-is; the next MESSAGE_SWIPED "updated" event will catch up once done.
     if (!tagState) return;
 
-    const current = await loadState(chatId);
-    const next = {
-      scene: { ...current.scene, ...(tagState.scene || {}) },
+    // Build the display preview by overlaying this swipe's tag onto the
+    // SETTLED state (not onto whatever the previous swipe displayed) -
+    // this keeps each swipe's preview independent of its siblings.
+    const settled = await loadState(chatId);
+    const preview = {
+      scene: { ...settled.scene, ...(tagState.scene || {}) },
       characters: {},
     };
     if (Array.isArray(tagState.characters) && tagState.characters.length > 0) {
       for (const char of tagState.characters) {
         const { name, ...fields } = char;
         if (!name) continue;
-        next.characters[name] = fields;
+        preview.characters[name] = fields;
       }
     }
 
-    await saveState(chatId, next);
-    spindle.updateMacroValue("scene_state", buildMacroValue(next));
-    spindle.sendToFrontend({ type: "state_updated", state: next, chatId });
+    // Display only - deliberately skip saveState() and updateMacroValue()
+    // so swipe exploration never pollutes the macro fed into generation.
+    spindle.sendToFrontend({ type: "state_updated", state: preview, chatId });
   });
 
   spindle.log.info("[SceneTracker] Ready.");
