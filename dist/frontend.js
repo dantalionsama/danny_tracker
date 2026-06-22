@@ -597,6 +597,7 @@ export function setup(ctx) {
   let activeTab   = null;
   let isCollapsed    = false;
   let latestMsgId    = null;   // only process tags from the most recent message
+  let isAwaitingFirstTag = true; // true until the current message's first (non-swipe) tag has committed
 
   const removeStyle = ctx.dom.addStyle(STYLES);
 
@@ -651,9 +652,15 @@ export function setup(ctx) {
     iconSvg: ICONS.location,
   });
 
-  // Track which message is the latest so scroll renders don't trigger updates
+  // Track which message is the latest so scroll renders don't trigger updates.
+  // Also: a NEW messageId here means a fresh message just finished generating
+  // (not a swipe of the current one, which keeps the same messageId) — so
+  // that's the signal to unlock the tag interceptor for the next message.
   const unsubGenEnded = ctx.events.on("GENERATION_ENDED", (payload) => {
-    if (payload.messageId) latestMsgId = payload.messageId;
+    if (payload.messageId && payload.messageId !== latestMsgId) {
+      latestMsgId = payload.messageId;
+      isAwaitingFirstTag = true;
+    }
   });
 
   // ── Repaint ──────────────────────────────────────────────────────────────────
@@ -767,10 +774,28 @@ export function setup(ctx) {
 
   // ── Tag interceptor ──────────────────────────────────────────────────────────
 
+  // This interceptor's payload has NO swipe identifier (messageId stays
+  // identical across every swipe of one message) — so it cannot tell
+  // "the original generation, completing" apart from "a swipe variant,
+  // streaming or being redisplayed." Committing tag_parsed for the latter
+  // would pollute settled state/the macro with whatever swipe happens to
+  // be on screen, which is exactly the swipe-state bug.
+  //
+  // Fix: only ever forward tag_parsed while GENERATION_ENDED has not yet
+  // fired for the CURRENT message generation we're watching. The first
+  // time a message's tag completes (the original, non-swipe generation),
+  // we forward it and then lock the door — isAwaitingFirstTag flips false
+  // and stays false until a brand new message starts (handled by the
+  // GENERATION_ENDED listener resetting it below). Any swipe activity on
+  // this message after that point is handled exclusively by the backend's
+  // MESSAGE_SWIPED listener, which updates the widget display only and
+  // never touches settled state.
+
   const unsubTag = ctx.messages.registerTagInterceptor(
   { tagName: "scene-state", removeFromMessage: true },
   (payload) => {
     if (payload.isUser) return;
+    if (!isAwaitingFirstTag) return; // already settled this message — swipes go through the backend's swipe handler instead
 
     // Only process the actively streaming/just-completed message
     if (
@@ -779,16 +804,20 @@ export function setup(ctx) {
       payload.messageId !== latestMsgId
     ) return;
 
-    // DON'T mutate state here — just forward to backend.
-    // The backend will persist it and send back a state_updated,
-    // which is the single place we update local state.
+    const rawTag = payload.content || payload.innerText || "";
+    if (!rawTag) return;
+
     try {
-      const data = JSON.parse(payload.content || payload.innerText || "{}");
+      const data = JSON.parse(rawTag);
+      // DON'T mutate state here — just forward to backend.
+      // The backend will persist it and send back a state_updated,
+      // which is the single place we update local state.
       ctx.sendToBackend({
         type: "tag_parsed",
         scene: data.scene || {},
         characters: data.characters || [],
       });
+      isAwaitingFirstTag = false; // settled — block any further commits for this message
       isCollapsed ? flashPill() : flashCard();
     } catch (e) {
       ctx.log?.warn("[SceneTracker] Tag parse error: " + e.message);
@@ -831,6 +860,7 @@ export function setup(ctx) {
     state = { scene: {}, characters: {} };
     activeTab = null;
     latestMsgId = null;
+    isAwaitingFirstTag = true;
     repaint();
   });
 
