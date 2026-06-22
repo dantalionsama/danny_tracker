@@ -101,7 +101,7 @@ let activeChatId = null;
   spindle.on("MESSAGE_SWIPED", async ({ chatId, message, action, swipeId }) => {
     spindle.log.warn(`[SceneTracker][DEBUG] MESSAGE_SWIPED fired - action=${action} swipeId=${swipeId} chatId=${chatId} activeChatId=${activeChatId}`);
     if (chatId !== activeChatId) return;
-    if (action !== "added" && action !== "navigated") return; // ignore deleted/updated
+    if (action === "deleted") return; // nothing to re-derive from a removed slot
     if (!message || !Array.isArray(message.swipes)) {
       spindle.log.warn("[SceneTracker][DEBUG] No message.swipes array - bailing");
       return;
