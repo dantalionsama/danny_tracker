@@ -78,6 +78,14 @@ let activeChatId = null;
     spindle.log.warn("[SceneTracker] Could not get active chat on boot: " + e.message);
   }
 
+  // Tell the frontend a new user message was sent so it can unlock the tag
+  // interceptor for the next genuine AI generation.
+  spindle.on("MESSAGE_SENT", ({ chatId }) => {
+    if (chatId === activeChatId) {
+      spindle.sendToFrontend({ type: "message_sent", chatId });
+    }
+  });
+
   // Listen for chat switches — key state per chat
   spindle.on("CHAT_SWITCHED", async ({ chatId }) => {
   activeChatId = chatId;
@@ -167,6 +175,13 @@ spindle.onFrontendMessage(async (payload) => {
       delete current.characters[payload.name];
       await saveState(chatId, current);
       spindle.updateMacroValue("scene_state", buildMacroValue(current));
+      break;
+    }
+    case "clear_all": {
+      const empty = { scene: {}, characters: {} };
+      await saveState(chatId, empty);
+      spindle.updateMacroValue("scene_state", "");
+      spindle.sendToFrontend({ type: "state_updated", state: empty, chatId });
       break;
     }
     case "request_state": {

@@ -188,7 +188,11 @@ function buildDrawerTab(state, collapsedChars, keepCount) {
       <button class="st-drawer-toggle-all" id="st-drawer-toggle-all">
         ${allCollapsed ? "Expand all" : "Collapse all"}
       </button>
-    </div>` : "";
+      <button class="st-drawer-clear-all" id="st-drawer-clear-all">Clear all</button>
+    </div>` : `
+    <div class="st-drawer-toggle-row">
+      <button class="st-drawer-clear-all" id="st-drawer-clear-all">Clear all</button>
+    </div>`;
 
   return `
     <div class="st-drawer">
@@ -201,8 +205,9 @@ function buildDrawerTab(state, collapsedChars, keepCount) {
         ${buildSceneRow("weather", scene.weather)}
       </div>
 
+      ${toggleAllRow}
       ${charNames.length
-        ? `${toggleAllRow}<div class="st-drawer-list">${charNames.map(name => buildDrawerCharCard(name, characters[name], collapsedChars.has(name))).join("")}</div>`
+        ? `<div class="st-drawer-list">${charNames.map(name => buildDrawerCharCard(name, characters[name], collapsedChars.has(name))).join("")}</div>`
         : `<p class="st-empty st-empty--pad">Waiting for first AI message…</p>`}
 
       <div class="st-drawer-cleanup">
@@ -539,6 +544,21 @@ const STYLES = `
   .st-drawer-toggle-all:hover {
     color: var(--lumiverse-text, inherit);
   }
+  .st-drawer-clear-all {
+    font-family: inherit;
+    font-size: 11.5px;
+    font-weight: 500;
+    color: hsla(0, 70%, 65%, 0.9);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 2px 4px;
+    margin-left: auto;
+    transition: color 0.12s;
+  }
+  .st-drawer-clear-all:hover {
+    color: hsla(0, 70%, 75%, 1);
+  }
   .st-drawer-cleanup {
     display: flex;
     align-items: center;
@@ -747,6 +767,14 @@ export function setup(ctx) {
       repaint();
     });
 
+    drawerTab.root.querySelector("#st-drawer-clear-all")?.addEventListener("click", () => {
+      state = { scene: {}, characters: {} };
+      collapsedChars.clear();
+      saveCollapsedChars();
+      ctx.sendToBackend({ type: "clear_all" });
+      repaint();
+    });
+
     // Cleanup: strip old <scene-state> tags from message content,
     // keeping the most recent N. Purely a token-saving maintenance action —
     // never touches the live tracker state itself.
@@ -844,6 +872,10 @@ export function setup(ctx) {
       state = { scene: {}, characters: {} };
       activeTab = null;
       repaint();
+    } else if (payload.type === "message_sent") {
+      // Backend confirmed a new user message — unlock tag interceptor
+      // so the next genuine AI generation commits to settled state.
+      isAwaitingFirstTag = true;
     } else if (payload.type === "cleanup_done") {
       const btn = drawerTab.root.querySelector("#st-drawer-cleanup-btn");
       const status = drawerTab.root.querySelector("#st-drawer-cleanup-status");
