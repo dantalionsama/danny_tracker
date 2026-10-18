@@ -71,76 +71,7 @@ function buildSceneRow(key, value) {
     </div>`;
 }
 
-function buildCharCard(fields) {
-  if (!fields || !Object.keys(fields).length) {
-    return `<p class="st-empty">No data yet.</p>`;
-  }
-  const keys = CHAR_FIELDS.filter(k => k in fields);
-  const extra = Object.keys(fields).filter(k => !CHAR_FIELDS.includes(k));
-  return [...keys, ...extra].map(key => `
-    <div class="st-char-row">
-      ${icon(key)}
-      <div class="st-char-text">
-        <span class="st-char-label">${key}</span>
-        <span class="st-char-value">${escHtml(fields[key] || "—")}</span>
-      </div>
-    </div>`).join("");
-}
-
-function buildTabBar(characters, activeTab) {
-  return Object.keys(characters).map(name => `
-    <button class="st-tab ${name === activeTab ? "st-tab--active" : ""}" data-tab="${escAttr(name)}">
-      <span class="st-tab-name">${escHtml(name)}</span>
-      <span class="st-tab-close" data-remove="${escAttr(name)}">×</span>
-    </button>`).join("");
-}
-
-function buildWidget(state, activeTab, isCollapsed) {
-  if (isCollapsed) {
-    return `
-      <button class="st-pill" id="st-expand" aria-label="Expand">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="3"/>
-          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
-        </svg>
-        <span>tracking...</span>
-      </button>`;
-  }
-
-  const scene      = state.scene || {};
-  const characters = state.characters || {};
-  const charNames  = Object.keys(characters);
-  const hasChars   = charNames.length > 0;
-  const charFields = activeTab ? (characters[activeTab] || {}) : {};
-
-  return `
-    <div class="st-card">
-      <div class="st-header" id="st-header">
-        <span class="st-title">danny is tracking...</span>
-        <button class="st-collapse-btn" id="st-collapse" aria-label="Collapse">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        </button>
-      </div>
-
-      <div class="st-scene-section">
-        <div class="st-scene-row st-scene-row--inline">
-          ${icon("date")}<span class="st-scene-value">${escHtml(scene.date || "—")}</span>
-          <span class="st-scene-divider">·</span>
-          ${icon("time")}<span class="st-scene-value">${escHtml(scene.time || "—")}</span>
-        </div>
-        ${buildSceneRow("weather", scene.weather)}
-      </div>
-
-      ${hasChars ? `
-        <div class="st-tab-bar">${buildTabBar(characters, activeTab)}</div>
-        <div class="st-char-section">${buildCharCard(charFields)}</div>
-      ` : `<p class="st-empty st-empty--pad">Waiting for first AI message…</p>`}
-    </div>`;
-}
-
 // ─── Drawer tab builders ──────────────────────────────────────────────────────
-// Same data as the floating widget, laid out as a full list (no tabs) since
-// the sidebar has height to spare instead of width.
 
 function buildDrawerCharCard(name, fields, isCardCollapsed) {
   const [h, s, l] = getMoodHsl(fields.mood || "");
@@ -229,75 +160,16 @@ function buildDrawerTab(state, collapsedChars, keepCount) {
 
 // ─── Mood theming ─────────────────────────────────────────────────────────────
 
-function applyMoodTheme(widgetRoot, mood) {
-  const [h, s, l] = getMoodHsl(mood);
-  const header = widgetRoot.querySelector("#st-header");
-  const card   = widgetRoot.querySelector(".st-card");
-  const pill   = widgetRoot.querySelector(".st-pill");
-  if (header) {
-    header.style.background   = `hsla(${h},${s}%,${l}%,0.18)`;
-    header.style.borderBottom = `1px solid hsla(${h},${s}%,${l}%,0.2)`;
-  }
-  if (card) {
-    card.style.borderColor = `hsla(${h},${s}%,${l}%,0.3)`;
-    card.style.setProperty("--st-mood-h", h);
-    card.style.setProperty("--st-mood-s", s + "%");
-    card.style.setProperty("--st-mood-l", l + "%");
-  }
-  if (pill) {
-    pill.style.borderColor = `hsla(${h},${s}%,${l}%,0.35)`;
-    pill.style.color       = `hsla(${h},${s}%,${l + 20}%,0.85)`;
-    pill.style.boxShadow   = `0 4px 20px rgba(0,0,0,0.55), 0 0 0 1px hsla(${h},${s}%,${l}%,0.15)`;
-  }
-}
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const STYLES = `
   scene-state { display: none !important; }
 
-  .st-card {
-    width: 300px;
-    font-family: var(--lumiverse-font, system-ui, sans-serif);
-    background: rgba(14, 11, 30, 0.88);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 14px;
-    overflow: hidden;
-    backdrop-filter: blur(24px) saturate(150%);
-    -webkit-backdrop-filter: blur(24px) saturate(150%);
-    box-shadow: 0 2px 0 rgba(255,255,255,0.04) inset, 0 12px 40px rgba(0,0,0,0.6);
-    transition: border-color 1s ease, box-shadow 1s ease;
-    --st-mood-h: 258; --st-mood-s: 70%; --st-mood-l: 55%;
-  }
-
-  /* ── Header ── */
-  .st-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 9px 10px 9px 13px;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
-    background: rgba(255,255,255,0.025);
-    transition: background 1s ease, border-color 1s ease;
-  }
-  .st-title {
-    font-size: 9.5px; font-weight: 700; letter-spacing: 0.13em;
-    text-transform: uppercase;
-    color: rgba(255,255,255,0.3);
-  }
-  .st-collapse-btn {
-    width: 24px; height: 24px; border-radius: 6px;
-    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
-    color: rgba(255,255,255,0.35); cursor: pointer; padding: 4px;
-    display: flex; align-items: center; justify-content: center;
-    transition: background 0.12s, color 0.12s;
-  }
-  .st-collapse-btn:hover { background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.8); }
-  .st-collapse-btn svg { width: 12px; height: 12px; }
-
-  /* ── Scene rows (time + weather) ── */
+  /* ── Shared ── */
   .st-scene-section {
     display: flex; flex-direction: column; gap: 0;
     padding: 8px 12px;
-    border-bottom: 1px solid rgba(255,255,255,0.055);
   }
   .st-scene-row {
     display: flex; align-items: center; gap: 8px;
@@ -308,8 +180,6 @@ const STYLES = `
     color: rgba(255,255,255,0.78);
     line-height: 1.3; word-break: break-word;
   }
-
-  /* ── Icons ── */
   .st-icon {
     flex-shrink: 0;
     width: 14px; height: 14px;
@@ -318,47 +188,6 @@ const STYLES = `
     transition: color 1s ease;
   }
   .st-icon svg { width: 14px; height: 14px; }
-
-  /* ── Tab bar ── */
-  .st-tab-bar {
-    display: flex; flex-wrap: wrap; gap: 4px;
-    padding: 8px 12px 7px;
-    border-bottom: 1px solid rgba(255,255,255,0.055);
-  }
-  .st-tab {
-    display: flex; align-items: center; gap: 3px;
-    padding: 3px 8px 3px 9px;
-    border-radius: 20px; border: 1px solid rgba(255,255,255,0.09);
-    background: rgba(255,255,255,0.04);
-    font-family: inherit; font-size: 11px; font-weight: 600;
-    color: rgba(255,255,255,0.38); cursor: pointer;
-    transition: background 0.12s, color 0.12s, border-color 0.12s;
-    white-space: nowrap;
-  }
-  .st-tab:hover { background: rgba(255,255,255,0.09); color: rgba(255,255,255,0.7); }
-  .st-tab--active {
-    background: hsla(var(--st-mood-h), var(--st-mood-s), var(--st-mood-l), 0.18);
-    border-color: hsla(var(--st-mood-h), var(--st-mood-s), var(--st-mood-l), 0.35);
-    color: rgba(255,255,255,0.9);
-  }
-  .st-tab-name { pointer-events: none; }
-  .st-tab-close {
-    font-size: 13px; line-height: 1;
-    color: rgba(255,255,255,0.18); padding: 0 1px;
-    transition: color 0.12s;
-  }
-  .st-tab-close:hover { color: rgba(255,100,100,0.8); }
-
-  /* ── Character section ── */
-  .st-char-section {
-    padding: 8px 12px 10px;
-    display: flex; flex-direction: column; gap: 0;
-    animation: st-fade-in 0.18s ease-out;
-  }
-  @keyframes st-fade-in {
-    from { opacity: 0; transform: translateY(4px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
   .st-char-row {
     display: flex; align-items: flex-start; gap: 9px;
     padding: 6px 0;
@@ -379,56 +208,23 @@ const STYLES = `
     color: rgba(255,255,255,0.9);
     line-height: 1.35; word-break: break-word;
   }
-
-  /* ── Empty state ── */
+  .st-tab-close {
+    font-size: 13px; line-height: 1;
+    color: rgba(255,255,255,0.18); padding: 0 1px;
+    transition: color 0.12s; cursor: pointer;
+  }
+  .st-tab-close:hover { color: rgba(255,100,100,0.8); }
   .st-empty {
     font-size: 11.5px; color: rgba(255,255,255,0.28);
     font-style: italic; margin: 0;
   }
   .st-empty--pad { padding: 10px 13px; }
-
-  /* ── Collapsed pill ── */
-  .st-pill {
-    display: flex; align-items: center; gap: 7px;
-    padding: 8px 14px 8px 11px;
-    background: rgba(14,11,30,0.88);
-    border: 1px solid rgba(255,255,255,0.09);
-    border-radius: 999px; color: rgba(255,255,255,0.55);
-    cursor: pointer; font-family: inherit;
-    font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em;
-    text-transform: uppercase;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.55);
-    transition: background 0.15s, color 0.15s;
-    white-space: nowrap;
-  }
-  .st-pill svg { width: 13px; height: 13px; flex-shrink: 0; }
-  .st-pill:hover { background: rgba(28,20,52,0.95); color: rgba(255,255,255,0.9); }
-
-  /* Inline style */
   .st-scene-row--inline {
-    display: flex;
-    align-items: center;
-    gap: 6px;
+    display: flex; align-items: center; gap: 6px;
   }
   .st-scene-divider {
-    opacity: 0.3;
-    font-size: 11px;
-    margin: 0 2px; }
-
-  /* ── Flash ── */
-  @keyframes st-pulse {
-    0%   { box-shadow: 0 0 0 0 hsla(var(--st-mood-h),var(--st-mood-s),var(--st-mood-l),0.55), 0 12px 40px rgba(0,0,0,0.6); }
-    60%  { box-shadow: 0 0 0 6px hsla(var(--st-mood-h),var(--st-mood-s),var(--st-mood-l),0), 0 12px 40px rgba(0,0,0,0.6); }
-    100% { box-shadow: 0 12px 40px rgba(0,0,0,0.6); }
+    opacity: 0.3; font-size: 11px; margin: 0 2px;
   }
-  .st-card.st-flash { animation: st-pulse 0.7s ease-out forwards; }
-
-  @keyframes st-pill-pulse {
-    0%   { box-shadow: 0 0 0 0 rgba(124,77,255,0.65), 0 4px 20px rgba(0,0,0,0.55); }
-    60%  { box-shadow: 0 0 0 6px rgba(124,77,255,0),  0 4px 20px rgba(0,0,0,0.55); }
-    100% { box-shadow: 0 4px 20px rgba(0,0,0,0.55); }
-  }
-  .st-pill.st-flash { animation: st-pill-pulse 0.7s ease-out forwards; }
 
   /* ── Drawer tab ── */
   .st-drawer {
@@ -615,8 +411,6 @@ const STYLES = `
 export function setup(ctx) {
   let state       = { scene: {}, characters: {} };
   let activeTab   = null;
-  let isCollapsed    = false;
-  let latestMsgId    = null;   // only process tags from the most recent message
   // Starts LOCKED (false). If this defaulted to true, every page load or
   // extension reload would treat whatever message tag happens to render
   // first (e.g. old chat history loading in) as "the original generation"
@@ -627,13 +421,6 @@ export function setup(ctx) {
   let isAwaitingFirstTag = false;
 
   const removeStyle = ctx.dom.addStyle(STYLES);
-
-  const POSITION_KEY = "scene_tracker_position";
-  let savedPos = { x: window.innerWidth - 320, y: 100 };
-  try {
-    const stored = localStorage.getItem(POSITION_KEY);
-    if (stored) savedPos = JSON.parse(stored);
-  } catch {}
 
   const COLLAPSED_KEY = "scene_tracker_collapsed_chars";
   let collapsedChars = new Set();
@@ -652,23 +439,7 @@ export function setup(ctx) {
     if (stored) keepCount = Math.max(1, parseInt(stored, 10) || 3);
   } catch {}
 
-  const floatWidget = ctx.ui.createFloatWidget({
-    width: 300,
-    height: 320,
-    initialPosition: savedPos,
-    snapToEdge: true,
-    tooltip: "Scene Tracker",
-    chromeless: true,
-    onMove: (pos) => {
-      try { localStorage.setItem(POSITION_KEY, JSON.stringify(pos)); } catch {}
-    },
-  });
-
-  const widgetRoot = floatWidget.root;
-
-  // ── Drawer tab (sidebar) ─────────────────────────────────────────────────────
-  // Same state, same icons/colors — just a full-list layout instead of tabs,
-  // since the sidebar has room for everyone at once.
+  // ── Drawer tab ───────────────────────────────────────────────────────────────
   const drawerTab = ctx.ui.registerDrawerTab({
     id: "tracker",
     title: "Scene Tracker",
@@ -679,18 +450,6 @@ export function setup(ctx) {
     iconSvg: ICONS.location,
   });
 
-  // Track which message is the latest so scroll renders don't trigger updates.
-  const unsubGenEnded = ctx.events.on("GENERATION_ENDED", (payload) => {
-    if (payload.messageId) latestMsgId = payload.messageId;
-  });
-
-  // The user sending a new message is the one reliable "a fresh, genuine
-  // AI generation is about to happen" signal - unlock the tag interceptor
-  // so the very next completed tag gets committed to settled state.
-  const unsubMsgSent = ctx.events.on("MESSAGE_SENT", () => {
-    isAwaitingFirstTag = true;
-  });
-
   // ── Repaint ──────────────────────────────────────────────────────────────────
 
   function repaint() {
@@ -698,40 +457,6 @@ export function setup(ctx) {
     if (activeTab && !charNames.includes(activeTab)) activeTab = charNames[0] ?? null;
     if (!activeTab && charNames.length) activeTab = charNames[0];
 
-    widgetRoot.innerHTML = buildWidget(state, activeTab, isCollapsed);
-
-    const mood = activeTab ? (state.characters[activeTab] || {}).mood || "" : "";
-    applyMoodTheme(widgetRoot, mood);
-
-    widgetRoot.querySelector("#st-expand")?.addEventListener("click", () => {
-      isCollapsed = false; repaint();
-    });
-    widgetRoot.querySelector("#st-collapse")?.addEventListener("click", () => {
-      isCollapsed = true; repaint();
-    });
-
-    widgetRoot.querySelectorAll(".st-tab").forEach(tab => {
-      tab.addEventListener("click", (e) => {
-        if (e.target.closest(".st-tab-close")) return;
-        activeTab = tab.dataset.tab; repaint();
-      });
-    });
-
-    widgetRoot.querySelectorAll(".st-tab-close").forEach(btn => {
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const name = btn.dataset.remove;
-        delete state.characters[name];
-        if (activeTab === name) activeTab = null;
-        collapsedChars.delete(name);
-        saveCollapsedChars();
-        ctx.sendToBackend({ type: "remove_character", name });
-        repaint();
-      });
-    });
-
-    // Drawer tab gets the same data, different layout — no tabs to manage,
-    // just every character's card and a remove button on each.
     drawerTab.root.innerHTML = buildDrawerTab(state, collapsedChars, keepCount);
     drawerTab.root.querySelectorAll(".st-tab-close").forEach(btn => {
       btn.addEventListener("click", (e) => {
@@ -797,17 +522,6 @@ export function setup(ctx) {
 
   // ── Flash ────────────────────────────────────────────────────────────────────
 
-  function flashCard() {
-    const el = widgetRoot.querySelector(".st-card");
-    if (!el) return;
-    el.classList.remove("st-flash"); void el.offsetWidth; el.classList.add("st-flash");
-  }
-  function flashPill() {
-    const el = widgetRoot.querySelector(".st-pill");
-    if (!el) return;
-    el.classList.remove("st-flash"); void el.offsetWidth; el.classList.add("st-flash");
-  }
-
   // ── Tag interceptor ──────────────────────────────────────────────────────────
 
   // This interceptor's payload has NO swipe identifier (messageId stays
@@ -831,14 +545,7 @@ export function setup(ctx) {
   { tagName: "scene-state", removeFromMessage: true },
   (payload) => {
     if (payload.isUser) return;
-    if (!isAwaitingFirstTag) return; // already settled this message, or never unlocked this session (e.g. page refresh)
-
-    // Only process the actively streaming/just-completed message
-    if (
-      !payload.isStreaming &&
-      latestMsgId !== null &&
-      payload.messageId !== latestMsgId
-    ) return;
+    if (!isAwaitingFirstTag) return;
 
     const rawTag = payload.content || payload.innerText || "";
     if (!rawTag) return;
@@ -854,7 +561,6 @@ export function setup(ctx) {
         characters: data.characters || [],
       });
       isAwaitingFirstTag = false; // settled — block any further commits for this message
-      isCollapsed ? flashPill() : flashCard();
     } catch (e) {
       ctx.log?.warn("[SceneTracker] Tag parse error: " + e.message);
     }
@@ -899,11 +605,7 @@ export function setup(ctx) {
   const unsubChatSwitch = ctx.events.on("CHAT_SWITCHED", ({ chatId }) => {
     state = { scene: {}, characters: {} };
     activeTab = null;
-    latestMsgId = null;
-    // LOCKED, not unlocked - the next tag interceptor firing in the new
-    // chat will be from existing history rendering in, not a fresh
-    // generation. Only MESSAGE_SENT in this (new) chat should unlock it.
-    isAwaitingFirstTag = false;
+    isAwaitingFirstTag = false; // locked until next MESSAGE_SENT
     repaint();
   });
 
@@ -914,10 +616,7 @@ export function setup(ctx) {
     unsubTag();
     unsubBackend();
     unsubChatSwitch();
-    unsubGenEnded();
-    unsubMsgSent();
     removeStyle();
-    floatWidget.destroy();
     drawerTab.destroy();
   };
 }

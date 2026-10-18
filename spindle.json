@@ -1,5 +1,5 @@
 {
-  "version": "1.7.5",
+  "version": "1.7.6",
   "name": "Danny's Tracker",
   "identifier": "danny_tracker",
   "author": "dantalionsama",
@@ -8,7 +8,6 @@
   "description": "Floating widget tracking scene state and multiple characters. Auto-updates from hidden AI tags, per-chat state, mood color theming.",
   "permissions": [
     "ephemeral_storage",
-    "ui_panels",
     "chats",
     "chat_mutation"
   ],
